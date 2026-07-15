@@ -51,9 +51,16 @@ const peds = new Pedestrians(scene);
 const minimap = new Minimap(document.getElementById('minimap'), colliders);
 window.__game = { player, traffic, peds, groundHeight, nearestBeach }; // debug/testing hook
 
+// ---- background music ----
+const bgm = document.getElementById('bgm');
+bgm.volume = 0.35;
+
 // ---- pointer lock ----
 let locked = false;
-overlay.addEventListener('click', () => renderer.domElement.requestPointerLock());
+overlay.addEventListener('click', () => {
+  renderer.domElement.requestPointerLock();
+  if (bgm.paused) bgm.play().catch(() => {});
+});
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
   overlay.classList.toggle('hidden', locked);

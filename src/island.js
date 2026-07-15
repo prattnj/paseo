@@ -132,7 +132,7 @@ export function coastBands() {
 // allows (2m off the SW lawn edges, clear of the pond in the NE corner) and
 // the profile is near-linear with softened base/summit, keeping the max
 // gradient ~1.0 m/m — just under the climb limit (1.05), so the flanks are
-// walkable everywhere and the spiral staircase is the scenic option.
+// walkable directly, no stairs needed.
 export const HILL = { x: -288, z: -168, r: 85, top: 8, h: 72.5 };
 
 // near-linear profile: 1 at the summit plateau edge, 0 at the rim. A small
@@ -143,17 +143,6 @@ function hillProf(t) {
   if (t <= 0) return 1;
   if (t >= 1) return 0;
   return 1 - ((1 - HILL_BLEND) * t + HILL_BLEND * t * t * (3 - 2 * t));
-}
-
-// inverse of hillProf (monotonic) via bisection: f in (0,1) -> t
-function hillProfInv(f) {
-  let lo = 0, hi = 1;
-  for (let i = 0; i < 40; i++) {
-    const mid = (lo + hi) / 2;
-    if (hillProf(mid) > f) lo = mid;
-    else hi = mid;
-  }
-  return (lo + hi) / 2;
 }
 
 export function hillHeight(x, z) {
@@ -185,7 +174,15 @@ function pondDepth(x, z) {
 // linearly between the radius bands and match the rendered mesh.
 export function groundHeight(x, z) {
   const r = Math.hypot(x, z);
-  if (r < 290) return TOP_WALK + hillHeight(x, z) + pondDepth(x, z); // fast path: min coast radius is ~308 (inlet head)
+  // fast path: min coast radius is ~308 (inlet head), so r < 290 from the
+  // world origin is always inland. The hill sits farther out (its center is
+  // ~333 from the origin), so also fast-path its whole bounding square —
+  // otherwise its far flank would fall through to the coastline branch below
+  // and read back as flat plateau ground.
+  const dxh = x - HILL.x, dzh = z - HILL.z;
+  if (r < 290 || (dxh > -HILL.r && dxh < HILL.r && dzh > -HILL.r && dzh < HILL.r)) {
+    return TOP_WALK + hillHeight(x, z) + pondDepth(x, z);
+  }
   const th = Math.atan2(z, x);
   const r1 = lookup(R1, th);
   if (r <= r1) return TOP_WALK;
@@ -503,8 +500,8 @@ function buildRocks(scene, colliders) {
   scene.add(mesh);
 }
 
-// The central-park hill: faceted grass cone, a spiral staircase winding all
-// the way around it, and a gazebo on the flat summit dome.
+// The central-park hill: faceted grass cone with a gazebo on the flat
+// summit dome. The flanks are shallow enough to walk up directly.
 function buildHill(scene, colliders) {
   const SEG = 44;
   const pos = [], col = [];
@@ -539,47 +536,8 @@ function buildHill(scene, colliders) {
   mesh.castShadow = mesh.receiveShadow = true;
   scene.add(mesh);
 
-  // spiral staircase: steps root into the flank (tall boxes) and wind
-  // counterclockwise from the base entry (facing the park center) to the top
-  const RISE = 0.34, RUN = 1.0;
-  const surfR = (h) =>
-    HILL.top + hillProfInv(Math.min(Math.max(h / HILL.h, 0), 1)) * (HILL.r - HILL.top);
-  const steps = [];
-  let phi = Math.atan2(-245 - HILL.z, -350 - HILL.x); // enter from the SW lawn corner (clear of the pond)
-  for (let k = 0; ; k++) {
-    const top = 0.17 + (k + 1) * RISE;
-    const r = surfR(top) + 0.5;
-    steps.push({
-      x: HILL.x + Math.cos(phi) * r,
-      z: HILL.z + Math.sin(phi) * r,
-      top,
-      ry: -phi - Math.PI / 2, // local +x tangential (OBB convention)
-    });
-    if (top >= HILL.h - 0.05) break;
-    phi += RUN / Math.max(r, 6);
-  }
-  const SW = 2.4, SD = 1.7, SH = 4.5; // radial width, tangential depth, root depth
-  const stepMesh = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(SD, SH, SW),
-    new THREE.MeshLambertMaterial({ color: 0xb5b0a6 }),
-    steps.length
-  );
-  const m4 = new THREE.Matrix4();
-  const v3 = new THREE.Vector3(), sc1 = new THREE.Vector3(1, 1, 1);
-  const qt = new THREE.Quaternion(), eu = new THREE.Euler();
-  steps.forEach((s, k) => {
-    eu.set(0, s.ry, 0);
-    qt.setFromEuler(eu);
-    v3.set(s.x, s.top - SH / 2, s.z);
-    m4.compose(v3, qt, sc1);
-    stepMesh.setMatrixAt(k, m4);
-    colliders.add(s.x, s.top - SH, s.z, SD, SH, SW, s.ry);
-  });
-  stepMesh.castShadow = stepMesh.receiveShadow = true;
-  scene.add(stepMesh);
-
-  // forest: hash-scattered trees all over the flanks (clear of the stairs),
-  // sitting on the hill surface — trunks + ico or cone canopies, instanced
+  // forest: hash-scattered trees all over the flanks, sitting on the hill
+  // surface — trunks + ico or cone canopies, instanced
   {
     const LEAFS = [0x4e9b47, 0x3e7d3a, 0x67ab3f];
     const icoT = [], coneT = [];
@@ -589,7 +547,6 @@ function buildHill(scene, colliders) {
       const r = HILL.top + t * (HILL.r - HILL.top);
       const x = HILL.x + Math.cos(a) * r;
       const z = HILL.z + Math.sin(a) * r;
-      if (steps.some((s) => Math.hypot(x - s.x, z - s.z) < 3.4)) continue;
       const gy = TOP_Y + HILL.h * hillProf(t);
       const s = 0.85 + frac(9301, k, 3) * 0.8;
       const kind = hash(9301, k, 4) % 3;
