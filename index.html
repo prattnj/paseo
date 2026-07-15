@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paseo</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; background: #9fd8ef; }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; }
+      #overlay {
+        position: fixed; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 14px;
+        background: rgba(20, 30, 40, 0.55); backdrop-filter: blur(3px);
+        color: #fff; font-family: 'Segoe UI', system-ui, sans-serif;
+        cursor: pointer; user-select: none; z-index: 10;
+      }
+      #overlay h1 { font-size: 64px; margin: 0; letter-spacing: 10px; font-weight: 300; }
+      #overlay p { margin: 0; font-size: 16px; opacity: 0.85; }
+      #overlay .keys { font-size: 14px; opacity: 0.7; line-height: 1.7; text-align: center; }
+      #overlay .start { margin-top: 10px; padding: 10px 26px; border: 1px solid rgba(255,255,255,0.6); border-radius: 6px; font-size: 15px; }
+      #overlay.hidden { display: none; }
+      #hint {
+        position: fixed; bottom: 48px; left: 50%; transform: translateX(-50%);
+        display: none; padding: 8px 22px; border-radius: 999px;
+        background: rgba(20, 30, 40, 0.65); color: #fff;
+        font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px;
+        letter-spacing: 1px; pointer-events: none; user-select: none; z-index: 5;
+      }
+      #fade {
+        position: fixed; inset: 0; background: #08131c; opacity: 0;
+        pointer-events: none; transition: opacity 0.4s ease; z-index: 8;
+      }
+      #boost {
+        position: fixed; bottom: 44px; right: 44px; width: 190px;
+        display: none; pointer-events: none; user-select: none; z-index: 5;
+        font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      #boost .label {
+        font-size: 11px; letter-spacing: 3px; color: #fff; opacity: 0.75;
+        margin-bottom: 5px; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      }
+      #boost .track {
+        height: 10px; border-radius: 999px; overflow: hidden;
+        background: rgba(20, 30, 40, 0.6); border: 1px solid rgba(255,255,255,0.25);
+      }
+      #boost .fill { height: 100%; width: 100%; background: #6ee7ff; border-radius: 999px; }
+      #speedo {
+        position: fixed; bottom: 82px; right: 44px; width: 190px;
+        display: none; pointer-events: none; user-select: none; z-index: 5;
+        font-family: 'Segoe UI', system-ui, sans-serif; text-align: right;
+        color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      }
+      #speedo .num { font-size: 36px; font-weight: 600; line-height: 1; }
+      #speedo .unit { font-size: 11px; letter-spacing: 3px; opacity: 0.75; }
+      #minimap {
+        position: fixed; left: 44px; bottom: 44px; width: 200px; height: 200px;
+        border-radius: 12px; overflow: hidden; z-index: 5;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+        pointer-events: none; user-select: none; opacity: 0.92;
+      }
+      #minimap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #minimap .arrow {
+        position: absolute; left: -7px; top: -8px; width: 14px; height: 16px;
+        background: #fff;
+        clip-path: polygon(50% 0%, 90% 100%, 50% 74%, 10% 100%);
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="overlay">
+      <h1>PASEO</h1>
+      <p>a walk around the city</p>
+      <div class="keys">
+        WASD &mdash; move &nbsp;&bull;&nbsp; SHIFT &mdash; sprint / boost &nbsp;&bull;&nbsp; SPACE &mdash; jump<br />
+        E &mdash; enter / exit car &nbsp;&bull;&nbsp; Mouse &mdash; look &nbsp;&bull;&nbsp; ESC &mdash; pause
+      </div>
+      <div class="start">Click to walk</div>
+    </div>
+    <div id="hint"></div>
+    <div id="speedo"><span class="num">0</span> <span class="unit">MPH</span></div>
+    <div id="boost"><div class="label">BOOST</div><div class="track"><div class="fill"></div></div></div>
+    <div id="minimap"><canvas></canvas><div class="arrow"></div></div>
+    <div id="fade"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
