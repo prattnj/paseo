@@ -6,10 +6,11 @@ import * as THREE from 'three';
 import { makeHumanoid, animateWalk } from './character.js';
 import { movePlayer } from './collision.js';
 import { collideCarWorld, CAR_R, pitchLift } from './traffic.js';
-import { groundHeight, nearestBeach, WATER_Y } from './island.js';
+import { groundHeight, nearestBeach, WATER_Y, inReservoir, reservoirRespawn } from './island.js';
+import { gridCellAt } from './layout.js';
 
-const WALK = 5.5;
-const SPRINT = 11.5;
+const WALK = 6;
+const SPRINT = 13;
 const JUMP = 8.5;
 const GRAVITY = 24;
 const CAM_DIST = 2.6;
@@ -27,7 +28,7 @@ export class Player {
     this.char = makeHumanoid({ shirt: 0xe04f43, pants: 0x37474f });
     scene.add(this.char.group);
 
-    this.pos = new THREE.Vector3(-205, 0.2, -140); // Central Park spawn (east lawn, below the hill)
+    this.pos = new THREE.Vector3(30, 0.2, -115); // Central Park spawn (east lawn, below the hill)
     this.vel = new THREE.Vector3();
     this.yaw = -Math.PI / 2;      // face east, toward downtown
     this.pitch = 0.12;            // slight down-look
@@ -48,6 +49,7 @@ export class Player {
     this._headY = this.pos.y;        // vertically smoothed camera follow
     this._camLen = CAM_DIST;         // smoothed camera boom length
     this._dyOff = 0;                 // drive-cam corner-slide yaw offset
+    this._logTimer = 0;  // timer for coordinate logging
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') e.preventDefault();
@@ -55,6 +57,18 @@ export class Player {
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+  }
+
+  // Frame the third-person spawn view without running any physics — used to
+  // position the camera for the title screen, before the pointer is locked and
+  // the update loop starts. (Otherwise the camera sits at its default origin,
+  // half-buried at the map centre.) dt=1 makes updateCamera snap, no smoothing.
+  settleCamera() {
+    this._headY = this.pos.y;
+    this._camLen = CAM_DIST;
+    this.char.group.position.copy(this.pos);
+    this.char.group.rotation.y = this.heading;
+    this.updateCamera(CAM_DIST, EYE, 1);
   }
 
   onMouseMove(dx, dy) {
@@ -68,6 +82,16 @@ export class Player {
   }
 
   update(dt) {
+    // Log coordinates every second
+    this._logTimer += dt;
+    if (this._logTimer >= 1.0) {
+      const th = Math.atan2(this.pos.z, this.pos.x);
+      console.log(`Player: x=${this.pos.x.toFixed(2)}, y=${this.pos.y.toFixed(2)}, z=${this.pos.z.toFixed(2)}, th=${th.toFixed(3)}`);
+      const cell = gridCellAt(this.pos.x, this.pos.z);
+      if (cell) console.log(`Grid: ${cell.i}, ${cell.j}`);
+      this._logTimer = 0;
+    }
+
     if (this._eToggle) {
       this._eToggle = false;
       if (this.car) this.exitCar();
@@ -96,6 +120,12 @@ export class Player {
       this._drownT = 0.5;
       const f = this._fade();
       if (f) f.style.opacity = '1';
+    } else if (inReservoir(this.pos.x, this.pos.y, this.pos.z)) {
+      // drowned in the reservoir: respawn onto the berm (outside the fence)
+      this._drownT = 0.5;
+      this._resDrown = true;
+      const f = this._fade();
+      if (f) f.style.opacity = '1';
     }
   }
 
@@ -122,8 +152,14 @@ export class Player {
       if (c.flameFx) c.flameFx.visible = false;
       this.char.group.visible = true;
     }
-    const b = nearestBeach(this.pos.x, this.pos.z);
-    this.pos.set(b.x, b.y + 0.1, b.z);
+    if (this._resDrown) {
+      const p = reservoirRespawn(this.pos.x, this.pos.z);
+      this.pos.set(p.x, p.y, p.z);
+      this._resDrown = false;
+    } else {
+      const b = nearestBeach(this.pos.x, this.pos.z);
+      this.pos.set(b.x, b.y + 0.1, b.z);
+    }
     this.vel.set(0, 0, 0);
     this.driveSpeed = 0;
     this._moveCtx = null;
@@ -342,7 +378,13 @@ export class Player {
 
     // turning circle: barely steers when crawling, full rate at speed
     const grip = Math.min(1, Math.abs(v) / 7);
-    if (!c.air) this.driveHeading += steer * spec.turn * grip * dt * (v < 0 ? -1 : 1);
+    // Steer for the direction the driver is COMMANDING, not the leftover
+    // velocity: when the throttle opposes the current motion (braking out of
+    // forward, or flooring it while still rolling backward) the steering would
+    // otherwise feel inverted through the transition. Coasting (no throttle)
+    // falls back to the way the car is actually rolling.
+    const steerDir = throttle > 0 ? 1 : throttle < 0 ? -1 : (v < 0 ? -1 : 1);
+    if (!c.air) this.driveHeading += steer * spec.turn * grip * dt * steerDir;
     // the chase cam stays where the mouse put it: steering doesn't move it,
     // and it never snaps back on its own — full 360 look-around
 

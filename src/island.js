@@ -96,7 +96,7 @@ for (let i = 0; i < N; i++) {
   // beach width follows the picture's sand band (wide spit along the hook);
   // the RC fallback also scales by obliquity so oblique stretches keep a
   // real (true-width) beach past the rocks
-  R2[i] = Math.max(R1[i] + Math.min(Math.max(SAND[i] * 1.3 + 10, 42), 185), RC[i] + 20 * OB[i]);
+  R2[i] = SAND[i] === 0 ? RC[i] : Math.max(R1[i] + Math.min(Math.max(SAND[i] * 1.3 + 10, 20), 185), RC[i] + 20 * OB[i]);
 }
 
 function lookup(tab, th) {
@@ -127,13 +127,63 @@ export function coastBands() {
 }
 
 // ---- central-park hill ------------------------------------------------
-// A big forested hill covering most of Central Park, slightly taller than
-// the tallest downtown tower (~69m). The footprint is as wide as the park
-// allows (2m off the SW lawn edges, clear of the pond in the NE corner) and
+// A big forested hill covering most of Central Park. The footprint sits
+// 2m off the park's NW lawn edges, clear of the pond in the SE corner, and
 // the profile is near-linear with softened base/summit, keeping the max
-// gradient ~1.0 m/m — just under the climb limit (1.05), so the flanks are
-// walkable directly, no stairs needed.
-export const HILL = { x: -288, z: -168, r: 85, top: 8, h: 72.5 };
+// gradient ~0.94 m/m — under the climb limit (1.05), so the flanks are
+// walkable directly, no stairs needed. (Scaled down from the pre-resize
+// grid's 85m-radius/72.5m-tall hill to fit the now-smaller, square park
+// block at the same relative position/proportions — no longer taller than
+// the tallest downtown tower.)
+// Every hill the terrain knows about — the SINGLE source of truth. To add a
+// hill, just append one object here; overlapping hills blend (tallest wins,
+// so they read as one massif), buildHill renders
+// them, buildings.js/minimap pick them up automatically.
+//   x, z          centre
+//   r             circular radius  — OR —  rx, rz  oval half-widths
+//   top           flat-summit radius (m); omit for a pointed top
+//   h             summit height (m). Keep h <= ~0.4*min(radius) or the flanks
+//                 exceed the ~1.05 m/m climb limit and can't be walked up.
+//   trees         forest density; gazebo: true puts the summit gazebo on it
+export const HILLS = [
+  // central park
+  { x: -241, z: -144, rx: 80, rz: 72, top: 8, h: 30.3, trees: 500, gazebo: true },
+  { x: -290, z: -62, r: 35, top: 2, h: 15, trees: 160 },
+  { x: -240, z: -70, r: 42, top: 2, h: 15, trees: 160 },
+  { x: -200, z: -90, rx: 42, rz: 70, top: 2, h: 15, trees: 160 },
+  { x: -180, z: -180, r: 30, top: 2, h: 15, trees: 100 },
+  { x: -245, z: -34, rx: 70, rz: 20, top: 2, h: 10, trees: 140 },
+  { x: -175, z: -40, r: 25, top: 2, h: 10, trees: 80 },
+  { x: -305, z: -95, rx: 15, rz: 30, top: 2, h: 8, trees: 70 },
+  { x: -310, z: -175, rx: 15, rz: 30, top: 2, h: 12, trees: 100 },
+  { x: -300, z: -193, r: 13, top: 2, h: 10, trees: 80 },
+  // northeast coast
+  { x: 610, z: -505, r: 66, top: 6, h: 18, trees: 210 },
+  { x: 520, z: -510, r: 50, top: 6, h: 18, trees: 210 },
+  { x: 450, z: -505, rx: 80, rz: 50, top: 6, h: 18, trees: 420 },
+  //{ x: 500, z: -500, r: 50, top: 6, h: 18, trees: 210 },
+];
+
+// The main hill (the gazebo one) — buildings.js keys the central-park grass
+// mottle off it. Derived, so adding hills above needs no other edits.
+export const HILL = HILLS.find((H) => H.gazebo) || HILLS[0];
+
+// Normalise a hill to per-axis radii + a summit-plateau fraction.
+export function hillRadii(H) {
+  const rx = H.rx ?? H.r, rz = H.rz ?? H.r;
+  const rBase = H.r ?? Math.min(rx, rz);
+  const tf = Math.min(0.9, (H.top ?? 0) / rBase);
+  return { rx, rz, tf };
+}
+
+// Hills whose bounding box overlaps a rect — buildings.js uses this to pick up
+// whatever hills fall inside a park block, so keep-outs stay in sync.
+export function hillsInRect(x0, z0, x1, z1) {
+  return HILLS.filter((H) => {
+    const { rx, rz } = hillRadii(H);
+    return H.x + rx > x0 && H.x - rx < x1 && H.z + rz > z0 && H.z - rz < z1;
+  });
+}
 
 // near-linear profile: 1 at the summit plateau edge, 0 at the rim. A small
 // smoothstep share rounds the summit shoulder and the base toe; more would
@@ -146,43 +196,40 @@ function hillProf(t) {
 }
 
 export function hillHeight(x, z) {
-  const dx = x - HILL.x, dz = z - HILL.z;
-  if (dx < -HILL.r || dx > HILL.r || dz < -HILL.r || dz > HILL.r) return 0;
-  const d = Math.hypot(dx, dz);
-  if (d >= HILL.r) return 0;
-  const t = Math.max((d - HILL.top) / (HILL.r - HILL.top), 0);
-  return HILL.h * hillProf(t);
-}
-
-// Central-park pond bowl. Static so the island plateau fan can be carved
-// under it at build time. MUST match buildPark in city.js, which imports
-// these values (derived from the park-central block [-375,-145]x[-255,-9],
-// inset 3: center cx+iw*0.3 / cz+id*0.28, rad = min(iw,id)*0.14).
-export const POND = { x: -192.8, z: -64.8, a1: 31.36, a0: 35.36 };
-
-function pondDepth(x, z) {
-  const d = Math.max(Math.abs(x - POND.x), Math.abs(z - POND.z));
-  if (d >= POND.a0) return 0;
-  // slightly BELOW the shore/floor collider tops (-0.03 / -0.25) so the
-  // player always stands on the boxes: box support is exempt from the
-  // steep-terrain climb block, letting you wade back out over the rim
-  return d < POND.a1 ? -0.35 : -0.1;
-}
-
-// Walkable ground height at (x, z): plateau, rocky scarp (riser / tread /
-// riser), sloping beach, wading slope, or deep sea floor. Surfaces slope
-// linearly between the radius bands and match the rendered mesh.
-export function groundHeight(x, z) {
-  const r = Math.hypot(x, z);
-  // fast path: min coast radius is ~308 (inlet head), so r < 290 from the
-  // world origin is always inland. The hill sits farther out (its center is
-  // ~333 from the origin), so also fast-path its whole bounding square —
-  // otherwise its far flank would fall through to the coastline branch below
-  // and read back as flat plateau ground.
-  const dxh = x - HILL.x, dzh = z - HILL.z;
-  if (r < 290 || (dxh > -HILL.r && dxh < HILL.r && dzh > -HILL.r && dzh < HILL.r)) {
-    return TOP_WALK + hillHeight(x, z) + pondDepth(x, z);
+  // Take the TALLEST overlapping hill, not the sum: the meshes just
+  // interpenetrate (you see the higher surface), so summing would lift the
+  // walkable height above the visible ground wherever hills overlap.
+  let h = 0;
+  for (const H of HILLS) {
+    const dx = x - H.x, dz = z - H.z;
+    const { rx, rz, tf } = hillRadii(H);
+    if (dx < -rx || dx > rx || dz < -rz || dz > rz) continue;
+    const q = Math.hypot(dx / rx, dz / rz); // 0 at centre, 1 at the rim
+    if (q >= 1) continue;
+    const t = Math.max((q - tf) / (1 - tf), 0);
+    h = Math.max(h, H.h * hillProf(t));
   }
+  return h;
+}
+
+// Central-park reflecting pool footprint (rectangle, long axis N–S on the east
+// side). Built as a raised stone-edged pool on top of the lawn (buildCentralPark
+// in buildings.js), so the plateau is no longer carved beneath it.
+export const POND = { x: -137, z: -115, hx: 8, hz: 90 };
+
+// Walkable ground height at (x, z): the base terrain (plateau, rocky scarp,
+// beach, wading slope, sea floor) plus any hill sitting on it.
+export function groundHeight(x, z) {
+  const rg = reservoirGround(x, z);
+  if (rg !== null) return rg; // the berm/basin overrides the plateau here
+  return baseGround(x, z) + hillHeight(x, z);
+}
+
+// Base terrain height with no hills. Surfaces slope linearly between the coast
+// radius bands and match the rendered mesh.
+function baseGround(x, z) {
+  const r = Math.hypot(x, z);
+  if (r < 290) return TOP_WALK; // min coast radius ~308, so this is always inland
   const th = Math.atan2(z, x);
   const r1 = lookup(R1, th);
   if (r <= r1) return TOP_WALK;
@@ -222,11 +269,65 @@ export function nearestBeach(x, z) {
   return { x: bx, y: groundHeight(bx, bz), z: bz };
 }
 
+
 // True when (x, z) is on the grass plateau (safe respawn ground).
 export function onLand(x, z) {
   const r = Math.hypot(x, z);
   if (r < 290) return true;
   return r <= lookup(R1, Math.atan2(z, x)) - 2;
+}
+
+// Central reservoir (grid cell 10,12, centre 280,500): a square dirt berm
+// brim-full of deep water. Falling in drowns the player — respawned onto the
+// berm — the same way the ocean does. buildReservoir (buildings.js) draws the
+// geometry from these constants, so keep them in sync.
+export const RESERVOIR = {
+  cx: 280, cz: 500,
+  outHalf: 46,     // berm outer half-extent (just inside the block edge)
+  crestOut: 37,    // outer edge of the flat crest (top of the walkable slope)
+  waterHalf: 33,   // inner retaining wall = water edge
+  fenceHalf: 34.2, // wrought-iron fence ring on the crest
+  baseY: 0.2,      // ground/basin-floor height
+  crestY: 5.2,     // berm/crest top height
+  waterY: 4.7,     // water surface (brim-full)
+};
+
+// Smooth berm height at Chebyshev distance d from the reservoir centre. A
+// smoothstep outer slope (rounded, walkable) up to a flat crest, then a sheer
+// inner wall down to the basin floor. buildReservoir samples this for the mesh.
+export function bermHeight(d) {
+  const R = RESERVOIR;
+  if (d >= R.outHalf) return R.baseY;
+  if (d >= R.crestOut) { const t = (R.outHalf - d) / (R.outHalf - R.crestOut); return R.baseY + (R.crestY - R.baseY) * t * t * (3 - 2 * t); }
+  if (d >= R.waterHalf) return R.crestY;
+  return R.baseY; // basin floor
+}
+
+// Walkable height inside the reservoir footprint, or null outside it (so the
+// player/cars walk the smooth berm terrain and fall into the basin).
+export function reservoirGround(x, z) {
+  const R = RESERVOIR;
+  const dx = Math.abs(x - R.cx), dz = Math.abs(z - R.cz);
+  if (dx >= R.outHalf || dz >= R.outHalf) return null;
+  return bermHeight(Math.max(dx, dz));
+}
+
+// True when (x,y,z) is submerged in the reservoir (inside the basin, head under
+// the surface) — player.js uses this to trigger drowning.
+export function inReservoir(x, y, z) {
+  const R = RESERVOIR;
+  return Math.abs(x - R.cx) < R.waterHalf && Math.abs(z - R.cz) < R.waterHalf && y < R.waterY - 1.35;
+}
+
+// Respawn point on the berm crest, just OUTSIDE the fence, on the side nearest
+// (x,z) — where a drowned swimmer climbs back out.
+export function reservoirRespawn(x, z) {
+  const R = RESERVOIR, edge = R.fenceHalf + 1.4;
+  const dx = x - R.cx, dz = z - R.cz;
+  let px, pz;
+  if (Math.abs(dx) >= Math.abs(dz)) { px = R.cx + Math.sign(dx || 1) * edge; pz = R.cz + Math.max(-edge, Math.min(edge, dz)); }
+  else { pz = R.cz + Math.sign(dz || 1) * edge; px = R.cx + Math.max(-edge, Math.min(edge, dx)); }
+  return { x: px, y: R.crestY + 0.1, z: pz };
 }
 
 // ---- geometry -------------------------------------------------------------
@@ -500,10 +601,17 @@ function buildRocks(scene, colliders) {
   scene.add(mesh);
 }
 
-// The central-park hill: faceted grass cone with a gazebo on the flat
-// summit dome. The flanks are shallow enough to walk up directly.
+// Render every hill: faceted grass cone, a scattered forest on the flanks, and
+// (on the main one) a gazebo on the flat summit. Flanks are shallow enough to
+// walk up directly.
 function buildHill(scene, colliders) {
+  for (const H of HILLS) buildOneHill(scene, colliders, H);
+}
+
+function buildOneHill(scene, colliders, H) {
   const SEG = 44;
+  const { rx, rz, tf } = hillRadii(H);
+  const HS = 8801 + (Math.round(H.x) * 13 + Math.round(H.z)); // per-hill variation seed
   const pos = [], col = [];
   const tri = (a, b, c, color) => {
     pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
@@ -511,19 +619,15 @@ function buildHill(scene, colliders) {
   };
   const quad = (a, b, c, d, color) => { tri(a, b, c, color); tri(a, c, d, color); };
   const rings = [0, 0.07, 0.15, 0.24, 0.34, 0.44, 0.54, 0.64, 0.73, 0.82, 0.9, 0.96, 1];
+  // q is the elliptical radius fraction (tf at the summit edge, 1 at the rim)
   const pt = (s, t) => {
-    const a = (2 * Math.PI * s) / SEG;
-    const r = HILL.top + t * (HILL.r - HILL.top);
-    return [
-      HILL.x + Math.cos(a) * r,
-      TOP_Y + HILL.h * hillProf(t),
-      HILL.z + Math.sin(a) * r,
-    ];
+    const a = (2 * Math.PI * s) / SEG, q = tf + t * (1 - tf);
+    return [H.x + Math.cos(a) * q * rx, TOP_Y + H.h * hillProf(t), H.z + Math.sin(a) * q * rz];
   };
   for (let s = 0; s < SEG; s++) {
     const s2 = s + 1;
-    const shade = (k) => COL_GRASSES[hash(8801 + k, ((s + k * 29) >> 1)) % COL_GRASSES.length];
-    tri([HILL.x, TOP_Y + HILL.h, HILL.z], pt(s2, 0), pt(s, 0), shade(0));
+    const shade = (k) => COL_GRASSES[hash(HS + k, ((s + k * 29) >> 1)) % COL_GRASSES.length];
+    tri([H.x, TOP_Y + H.h, H.z], pt(s2, 0), pt(s, 0), shade(0));
     for (let k = 0; k < rings.length - 1; k++) {
       quad(pt(s, rings[k]), pt(s2, rings[k]), pt(s2, rings[k + 1]), pt(s, rings[k + 1]), shade(k + 1));
     }
@@ -536,20 +640,20 @@ function buildHill(scene, colliders) {
   mesh.castShadow = mesh.receiveShadow = true;
   scene.add(mesh);
 
-  // forest: hash-scattered trees all over the flanks, sitting on the hill
-  // surface — trunks + ico or cone canopies, instanced
+  // forest: hash-scattered trees all over the flanks, sitting on the surface
   {
+    const TS = HS + 500;
     const LEAFS = [0x4e9b47, 0x3e7d3a, 0x67ab3f];
     const icoT = [], coneT = [];
-    for (let k = 0; k < 130; k++) {
-      const a = frac(hash(9301, k, 1), 5) * Math.PI * 2;
-      const t = 0.12 + Math.sqrt(frac(hash(9301, k, 2), 9)) * 0.85;
-      const r = HILL.top + t * (HILL.r - HILL.top);
-      const x = HILL.x + Math.cos(a) * r;
-      const z = HILL.z + Math.sin(a) * r;
-      const gy = TOP_Y + HILL.h * hillProf(t);
-      const s = 0.85 + frac(9301, k, 3) * 0.8;
-      const kind = hash(9301, k, 4) % 3;
+    for (let k = 0; k < H.trees; k++) {
+      const a = frac(hash(TS, k, 1), 5) * Math.PI * 2;
+      const t = 0.12 + Math.sqrt(frac(hash(TS, k, 2), 9)) * 0.85;
+      const q = tf + t * (1 - tf);
+      const x = H.x + Math.cos(a) * q * rx;
+      const z = H.z + Math.sin(a) * q * rz;
+      const gy = TOP_Y + H.h * hillProf(t);
+      const s = 0.85 + frac(TS, k, 3) * 0.8;
+      const kind = hash(TS, k, 4) % 3;
       (kind === 1 ? coneT : icoT).push({ x, z, gy, s, c: LEAFS[kind] });
       colliders.add(x, gy, z, 0.7, 2.2 * s, 0.7);
     }
@@ -579,30 +683,31 @@ function buildHill(scene, colliders) {
     build(coneT, new THREE.ConeGeometry(1.5, 3.6, 7), 3.1);
   }
 
+  if (!H.gazebo) return;
   // gazebo on the summit: square deck, corner posts, red pyramid roof
-  const deckTop = HILL.h + 0.35;
+  const deckTop = H.h + 0.35;
   const deck = new THREE.Mesh(new THREE.BoxGeometry(8, 0.4, 8), mat(0xd8d3c8));
-  deck.position.set(HILL.x, deckTop - 0.2, HILL.z);
+  deck.position.set(H.x, deckTop - 0.2, H.z);
   deck.castShadow = deck.receiveShadow = true;
   scene.add(deck);
-  colliders.add(HILL.x, deckTop - 0.4, HILL.z, 8, 0.4, 8);
+  colliders.add(H.x, deckTop - 0.4, H.z, 8, 0.4, 8);
   for (const px of [-3.4, 3.4]) {
     for (const pz of [-3.4, 3.4]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.32, 2.7, 0.32), mat(0xf4f1e8));
-      post.position.set(HILL.x + px, deckTop + 1.35, HILL.z + pz);
+      post.position.set(H.x + px, deckTop + 1.35, H.z + pz);
       post.castShadow = post.receiveShadow = true;
       scene.add(post);
-      colliders.add(HILL.x + px, deckTop, HILL.z + pz, 0.32, 2.7, 0.32);
+      colliders.add(H.x + px, deckTop, H.z + pz, 0.32, 2.7, 0.32);
     }
   }
   const roof = new THREE.Mesh(
     new THREE.ConeGeometry(6.4, 2.6, 4, 1, false, Math.PI / 4),
     mat(0xc84b3c)
   );
-  roof.position.set(HILL.x, deckTop + 2.7 + 1.3, HILL.z);
+  roof.position.set(H.x, deckTop + 2.7 + 1.3, H.z);
   roof.castShadow = roof.receiveShadow = true;
   scene.add(roof);
-  colliders.add(HILL.x, deckTop + 2.7, HILL.z, 8.4, 1.2, 8.4);
+  colliders.add(H.x, deckTop + 2.7, H.z, 8.4, 1.2, 8.4);
 }
 
 // Offshore islets: each is a low-poly mound rising from the seafloor —
@@ -696,19 +801,9 @@ export function buildIsland(scene, colliders) {
     return [Math.cos(th) * r, y, Math.sin(th) * r];
   };
 
-  // radial interval where sample ray i passes through the pond carve square
-  // (slightly expanded; the leftover jagged rim hides under the shore boxes)
-  const PH = POND.a1 + 0.6;
-  const pondRay = (idx) => {
-    const th = -Math.PI + (2 * Math.PI * idx) / N;
-    let lo = 0, hi = Infinity;
-    for (const [comp, pc] of [[Math.cos(th), POND.x], [Math.sin(th), POND.z]]) {
-      if (Math.abs(comp) < 1e-9) { if (Math.abs(pc) > PH) return null; continue; }
-      const r1 = (pc - PH) / comp, r2 = (pc + PH) / comp;
-      lo = Math.max(lo, Math.min(r1, r2)); hi = Math.min(hi, Math.max(r1, r2));
-    }
-    return lo < hi && hi > 0 ? [Math.max(lo, 0), hi] : null;
-  };
+  // The central-park water is now a raised reflecting pool built on top of the
+  // lawn (buildCentralPark), so the plateau fan is no longer carved.
+  const pondRay = () => null;
   const clampR = (v, a, b) => Math.max(a, Math.min(b, v));
   // band quad between rays i/j and radii a..b, carved around the pond
   const bandQuad = (i, j, ai, aj, bi, bj, color) => {

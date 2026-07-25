@@ -54,8 +54,10 @@ below:
   `HILL`, `POND`, `ISLETS`, `coastBands`, and vertical constants (`TOP_Y`,
   `BEACH_Y`, `WATER_Y`).
 - `src/parkway.js` — the curved coastal ring road that replaces the old square
-  ring, hugging the plateau edge with authored pocket-park windows. Grid streets
-  reaching the map edge are extended by `city.js` to tee into it.
+  ring, hugging the plateau edge with authored pocket-park windows. It builds as
+  one clean closed loop; the grid stops short of it everywhere (outer cells that
+  would reach it are omitted in `layout.js`) so the two road networks never
+  intersect. `streetExtensions()` is a retained no-op.
 - `src/city.js` — builds the entire static city into batched meshes from the
   layout + island + parkway data. Owns the color `PALETTE` (re-exported) and the
   `PARKED` car list. All placement is hash-driven.
@@ -91,8 +93,12 @@ humanoid layer on top, all querying `groundHeight` and the shared colliders.
 
 ## Working in this codebase
 
-- Coordinates are **meters**; the grid spans roughly -640..640 on both axes, with
-  the island/coast extending further out.
+- Coordinates are **meters**; grid lines span -885..885 on both axes, but only
+  the cells that fit inside the coastal parkway are built (`REMOVED_CELLS`), so
+  the developed city is a rounded blob that follows the island out toward the
+  parkway. The island/coast extend further out. Every built grid block is a
+  uniform 100x100
+  square; streets are 10m wide except the x=0/z=0 central avenues, which are 20m.
 - Each `src/*.js` file opens with a substantial header comment explaining its role
   and the geometry/physics reasoning — read it before editing that module.
 - To change the city's shape, edit the **data** in `layout.js` / `coast-data.js`,

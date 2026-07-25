@@ -30,6 +30,7 @@ const TEMPLATES = {
   // square pyramid, base vertices on the diagonals (roofs over square towers)
   pyr: () => new THREE.ConeGeometry(0.5, 1, 4, 1, false, Math.PI / 4),
   ico: () => new THREE.IcosahedronGeometry(0.5, 0),
+  ico2: () => new THREE.IcosahedronGeometry(0.5, 2), // smoother sphere (domes)
   prism: prismGeometry,
 };
 
@@ -39,10 +40,21 @@ export class GeoBatch {
   constructor() {
     this.lists = {};
     for (const k of Object.keys(TEMPLATES)) this.lists[k] = [];
+    this.glow = []; // self-lit boxes (unlit material) — lamps, tunnel lights
   }
 
   _p(kind, x, y, z, sx, sy, sz, ry, hex) {
     this.lists[kind].push(x, y, z, sx, sy, sz, ry, hex);
+  }
+
+  // Self-lit box centered at (cx, cy, cz): rendered with an unlit material so it
+  // shows its full colour regardless of scene lighting — reads as a glowing
+  // fixture even in shadow. Base-anchored variant below.
+  glowBox(cx, cy, cz, sx, sy, sz, hex, ry = 0) {
+    this.glow.push(cx, cy, cz, sx, sy, sz, ry, hex);
+  }
+  glowBoxB(cx, y, cz, sx, sy, sz, hex, ry = 0) {
+    this.glow.push(cx, y + sy / 2, cz, sx, sy, sz, ry, hex);
   }
 
   // Box centered at (cx, cy, cz).
@@ -76,6 +88,11 @@ export class GeoBatch {
     this._p('ico', cx, cy, cz, r * 2, r * 2, r * 2, 0, hex);
   }
 
+  // Smoother sphere (subdivided) — for domes that should read as round.
+  ico2(cx, cy, cz, r, hex) {
+    this._p('ico2', cx, cy, cz, r * 2, r * 2, r * 2, 0, hex);
+  }
+
   build() {
     const group = new THREE.Group();
     const material = new THREE.MeshLambertMaterial({ flatShading: true });
@@ -104,6 +121,26 @@ export class GeoBatch {
       mesh.frustumCulled = false; // instances span the whole city
       group.add(mesh);
       this.lists[kind] = [];
+    }
+
+    // self-lit fixtures: one unlit InstancedMesh, no shadows. toneMapped:false
+    // keeps the warm colour from being crushed by the renderer's tone mapping.
+    const gn = this.glow.length / 8;
+    if (gn) {
+      const gmat = new THREE.MeshBasicMaterial({ toneMapped: false });
+      const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), gmat, gn);
+      for (let i = 0; i < gn; i++) {
+        const o = i * 8;
+        p.set(this.glow[o], this.glow[o + 1], this.glow[o + 2]);
+        s.set(this.glow[o + 3], this.glow[o + 4], this.glow[o + 5]);
+        q.setFromAxisAngle(up, this.glow[o + 6]);
+        m.compose(p, q, s);
+        mesh.setMatrixAt(i, m);
+        mesh.setColorAt(i, color.setHex(this.glow[o + 7]));
+      }
+      mesh.frustumCulled = false;
+      group.add(mesh);
+      this.glow = [];
     }
     return group;
   }

@@ -5,7 +5,9 @@ import { Colliders } from './collision.js';
 import { Player } from './player.js';
 import { Traffic } from './traffic.js';
 import { Pedestrians } from './peds.js';
+import { Balls, BALL_SPAWNS } from './balls.js';
 import { Minimap } from './minimap.js';
+import { Speakers } from './speakers.js';
 
 const app = document.getElementById('app');
 const overlay = document.getElementById('overlay');
@@ -14,7 +16,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -29,15 +31,16 @@ scene.add(hemi);
 
 const sun = new THREE.DirectionalLight(0xfff3dc, 1.9);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 10;
-sun.shadow.camera.far = 400;
-const S = 85;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.camera.near = 50;
+sun.shadow.camera.far = 2600;
+const S = 1050; // half-size: covers the ±885 grid + beaches from the sun's tilt
 sun.shadow.camera.left = -S;
 sun.shadow.camera.right = S;
 sun.shadow.camera.top = S;
 sun.shadow.camera.bottom = -S;
-sun.shadow.bias = -0.0004;
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 1.0; // larger frustum/texel needs a normal offset vs acne
 scene.add(sun, sun.target);
 
 // ---- world ----
@@ -47,23 +50,38 @@ buildCity(scene, colliders);
 
 const traffic = new Traffic(scene, colliders);
 const player = new Player(scene, camera, colliders, traffic);
-const peds = new Pedestrians(scene);
+const peds = new Pedestrians(scene, colliders);
+const balls = new Balls(scene, colliders);
+for (const s of BALL_SPAWNS) balls.add(s.x, s.z);
 const minimap = new Minimap(document.getElementById('minimap'), colliders);
+player.settleCamera(); // frame the spawn view for the title screen (before pointer lock)
 window.__game = { player, traffic, peds, groundHeight, nearestBeach }; // debug/testing hook
 
 // ---- background music ----
 const bgm = document.getElementById('bgm');
 bgm.volume = 0.35;
 
+// ---- Poo Man memorial speakers (positional music that ducks the bgm) ----
+const listener = new THREE.AudioListener();
+camera.add(listener);
+const speakers = new Speakers(scene, listener);
+
 // ---- pointer lock ----
 let locked = false;
 overlay.addEventListener('click', () => {
   renderer.domElement.requestPointerLock();
   if (bgm.paused) bgm.play().catch(() => {});
+  speakers.play();
 });
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
   overlay.classList.toggle('hidden', locked);
+  // ESC unlocks the pointer → treat it as a full pause: silence all music (the
+  // world/actors are frozen in the loop below). Clicking to re-lock resumes.
+  if (!locked) {
+    bgm.pause();
+    speakers.pause();
+  }
 });
 document.addEventListener('mousemove', (e) => {
   if (locked) player.onMouseMove(e.movementX, e.movementY);
@@ -79,13 +97,28 @@ window.addEventListener('resize', () => {
 const clock = new THREE.Clock();
 const SUN_DIR = new THREE.Vector3(0.45, 1, 0.35).normalize();
 
+// Fixed sun over the island centre — the shadow frustum is large enough to
+// cover everything, so it never needs to move.
+sun.position.copy(SUN_DIR).multiplyScalar(1300);
+sun.target.position.set(0, 0, 0);
+sun.target.updateMatrixWorld();
+sun.shadow.camera.updateProjectionMatrix();
+
 function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  player.update(dt);
-  traffic.update(dt, player);
-  peds.update(dt, traffic, player);
+  // Paused (pointer unlocked / overlay showing): freeze the world — no player
+  // control, no cars, peds, balls, or speaker animation — but keep rendering the
+  // still frame. clock.getDelta() above still drains the elapsed time, so there
+  // is no dt spike on resume.
+  if (locked) {
+    player.update(dt);
+    traffic.update(dt, player);
+    peds.update(dt, traffic, player);
+    balls.update(dt, player, traffic);
+    speakers.update(dt, player, bgm);
+  }
 
   // near-car HUD hint
   const hint = document.getElementById('hint');
@@ -114,10 +147,6 @@ function tick() {
       if (num.textContent !== mph) num.textContent = mph;
     }
   }
-
-  // shadow camera follows the player
-  sun.target.position.copy(player.pos);
-  sun.position.copy(player.pos).addScaledVector(SUN_DIR, 180);
 
   minimap.update(player);
 

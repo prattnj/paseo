@@ -3,9 +3,9 @@
 // Every car (moving or parked) can be hijacked and driven by the player.
 import * as THREE from 'three';
 import { mat } from './character.js';
-import { PALETTE as P, PARKED } from './city.js';
+import { PALETTE as P } from './palette.js';
+import { PARKED } from './blocks/index.js';
 import { groundHeight } from './island.js';
-import { parkwayLanePts } from './parkway.js';
 import { hash, pick } from './util.js';
 
 // Rect loop corners at road centerlines, offset to the driving lane.
@@ -21,27 +21,23 @@ function rectLoop(x0, z0, x1, z1, lane = 2.6) {
   ];
 }
 
-// The coastal parkway loop follows the island's edge (parkway.js) as one
-// uncut closed ring.
-const RING_LOOP = parkwayLanePts();
-const NORTH_LOOP = rectLoop(-500, -500, 140, -380);
+const NORTH_LOOP = rectLoop(-445, -445, 115, -335);
 
 const LOOPS = [
-  { pts: RING_LOOP, cars: 12 },                       // coastal parkway ring
-  { pts: rectLoop(-140, -140, 140, 140), cars: 16 },  // downtown
-  { pts: rectLoop(-140, -140, 140, 140, -2.6), cars: 12, reverse: true },
-  { pts: rectLoop(-380, -260, -140, 0), cars: 12 },   // around Central Park
-  { pts: rectLoop(0, -380, 380, 380), cars: 20 },     // east avenue loop
-  { pts: rectLoop(-500, -500, 0, -260, -2.6), cars: 12, reverse: true },
-  { pts: rectLoop(-140, 0, 140, 260), cars: 16 },     // south of downtown
-  { pts: rectLoop(260, -380, 500, 140, -2.6), cars: 12, reverse: true },
+  { pts: rectLoop(0, -225, 225, 0), cars: 16 },       // around the plaza
+  { pts: rectLoop(0, -225, 225, 0, -2.6), cars: 12, reverse: true },
+  { pts: rectLoop(-335, -225, -115, 0), cars: 12 },   // around Central Park
+  { pts: rectLoop(0, -335, 335, 335), cars: 20 },     // east avenue loop
+  { pts: rectLoop(-445, -445, 0, -225, -2.6), cars: 12, reverse: true },
+  { pts: rectLoop(-115, 0, 115, 225), cars: 16 },     // south of downtown
+  { pts: rectLoop(225, -335, 445, 115, -2.6), cars: 12, reverse: true },
   { pts: NORTH_LOOP, cars: 16 },                      // north side
   // outskirts loops — suburbs, industrial, midrise, apartments
-  { pts: rectLoop(-380, 0, -140, 140), cars: 10 },    // SW suburbs
-  { pts: rectLoop(-500, -260, -380, 140, -2.6), cars: 8, reverse: true }, // old town W
-  { pts: rectLoop(140, 140, 380, 500), cars: 10 },    // SE industrial
-  { pts: rectLoop(380, -260, 500, 140, -2.6), cars: 8, reverse: true },  // east midrise
-  { pts: rectLoop(-260, -500, 140, -260, -2.6), cars: 8, reverse: true }, // apartments N
+  { pts: rectLoop(-335, 0, -115, 115), cars: 10 },    // SW suburbs
+  { pts: rectLoop(-445, -225, -335, 115, -2.6), cars: 8, reverse: true }, // old town W
+  { pts: rectLoop(115, 115, 335, 445), cars: 10 },    // SE industrial
+  { pts: rectLoop(335, -225, 445, 115, -2.6), cars: 8, reverse: true },  // east midrise
+  { pts: rectLoop(-225, -445, 115, -225, -2.6), cars: 8, reverse: true }, // apartments N
 ];
 
 // Driving characteristics per car type.
@@ -50,6 +46,16 @@ export const SPECS = {
   truck:  { maxSpeed: 12, accel: 9, turn: 1.55, halfLen: 2.9, hoodH: 1.15 },
   police: { maxSpeed: 24, accel: 18, turn: 2.15, halfLen: 2.3, hoodH: 1.15 },
   sports: { maxSpeed: 32, accel: 24, turn: 2.3, halfLen: 2.35, hoodH: 0.95 },
+  // Speed boosted for development, don't forget to reset this
+  //normal: { maxSpeed: 32, accel: 28, turn: 2.05, halfLen: 2.3, hoodH: 1.15 },
+  //truck:  { maxSpeed: 24, accel: 18, turn: 1.55, halfLen: 2.9, hoodH: 1.15 },
+  //police: { maxSpeed: 48, accel: 36, turn: 2.15, halfLen: 2.3, hoodH: 1.15 },
+  //sports: { maxSpeed: 64, accel: 48, turn: 2.3, halfLen: 2.35, hoodH: 0.95 },
+  // Fire apparatus (only ever the two parked in the station garage — never
+  // spawned into traffic loops). Moderate: heavier and slower than a car but
+  // still driveable through the streets.
+  ladder: { maxSpeed: 24, accel: 15, turn: 1.30, halfLen: 4.5, hoodH: 1.45 },
+  pumper: { maxSpeed: 26, accel: 16, turn: 1.50, halfLen: 3.6, hoodH: 1.45 },
 };
 
 // Collision footprint: three discs along the car's long axis.
@@ -102,6 +108,41 @@ function makeCar(seed, type) {
     part(g, 0.12, 0.5, 0.12, 0x24262b, -0.7, 1.0, -1.95, false);
     part(g, 0.12, 0.5, 0.12, 0x24262b, 0.7, 1.0, -1.95, false);
     wheels(g, 1.4);
+  } else if (type === 'ladder' || type === 'pumper') {
+    // Parts are stacked so an upper piece's underside sits just *below* the
+    // piece it rests on (never exactly coplanar), and surface details are
+    // centred on the face they sit on (half embedded, half proud) — so no two
+    // differently-coloured faces share a plane (which z-fights).
+    const RED = 0xcf2a24, GL = P.glassDark, SIL = 0xc0c4c8, DK = 0x26282c;
+    const ladder = type === 'ladder', L = ladder ? 9.2 : 7.4, F = L / 2;
+    const BZ = -1.2, BL = L - 3.4;                                      // rear body centre/length
+    part(g, 2.3, 0.5, L - 0.2, DK, 0, 0.55, 0);                        // chassis
+    part(g, 2.42, 0.9, BL, SIL, 0, 1.0, BZ);                           // lower body (compartments)
+    part(g, 2.42, 0.9, BL, RED, 0, 1.9, BZ);                           // upper body
+    for (const sx of [-1, 1]) part(g, 0.1, 0.24, BL - 0.2, 0xeadf4e, sx * 1.21, 1.45, BZ); // reflective stripe (proud)
+    part(g, 2.46, 1.9, 2.9, RED, 0, 1.42, F - 1.55);                  // crew cab
+    part(g, 2.52, 0.24, 3.0, P.white, 0, 2.44, F - 1.55);             // white roof (embedded onto cab)
+    part(g, 2.0, 0.95, 0.16, GL, 0, 2.05, F - 0.1);                   // windshield (proud of cab front)
+    for (const sx of [-1, 1]) part(g, 0.16, 0.85, 1.7, GL, sx * 1.23, 2.05, F - 1.7); // side windows (proud)
+    part(g, 1.4, 0.5, 0.16, 0x17181c, 0, 1.05, F - 0.1);              // grille
+    part(g, 2.5, 0.4, 0.5, 0xd6dade, 0, 0.68, F);                    // bumper (straddles cab front)
+    for (const sx of [-1, 1]) part(g, 0.12, 0.45, 0.28, DK, sx * 1.4, 1.95, F - 0.55, false); // mirrors
+    part(g, 1.9, 0.16, 0.46, 0x0e1014, 0, 2.62, F - 1.55);            // light bar (embedded onto roof)
+    for (const [ox, cc] of [[-0.5, 0xe0342b], [0.5, 0x2b6fe0]]) part(g, 0.5, 0.16, 0.42, cc, ox, 2.76, F - 1.55, false); // beacons
+    if (ladder) {
+      part(g, 1.5, 0.5, 1.5, 0x3a3d42, 0, 2.52, -1.9);               // turntable (embedded onto body)
+      part(g, 1.06, 0.16, BL + 2.0, 0xcfd3d7, 0, 2.9, -1.3);         // ladder bed
+      for (const sx of [-1, 1]) part(g, 0.14, 0.34, BL + 2.2, 0xaeb2b6, sx * 0.50, 3.05, -1.3); // rails (outer proud of bed)
+      const lz0 = -1.3 - (BL + 2.0) / 2;
+      for (let i = 0; i < 10; i++) part(g, 0.94, 0.06, 0.09, 0xd8dce0, 0, 3.12, lz0 + (i + 0.5) * (BL + 2.0) / 10, false); // rungs (ends embedded in rails)
+      for (const sx of [-1, 1]) part(g, 0.55, 0.3, 0.95, 0x2b2b2b, sx * 1.42, 0.55, -2.5, false); // outriggers
+    } else {
+      part(g, 2.2, 0.6, BL - 0.6, 0x7a6640, 0, 2.55, BZ);            // open hose bed (embedded onto body)
+      part(g, 0.32, 0.55, 0.32, 0x3a3d42, 0, 2.6, 0.5);             // deck-gun base
+      part(g, 0.14, 0.5, 0.14, 0xd6dade, 0.02, 3.05, 0.65, false);  // deck-gun barrel
+    }
+    const rz = -F + 1.9, fz = F - 1.6;
+    for (const wz of [fz, rz, rz - 1.5]) for (const sx of [-1, 1]) part(g, 0.4, 0.82, 0.82, 0x141518, sx * 1.09, 0.42, wz, false); // outer proud of cab/body
   } else {
     const body = pick(P.carBodies, seed, 1);
     part(g, 1.9, 0.7, 4.1, body, 0, 0.75, 0);

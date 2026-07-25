@@ -3,9 +3,10 @@
 // coast bands (island.js), grid roads/blocks (layout.js) and the coastal
 // parkway (parkway.js). Fixed north-up (screen up = -z, matching a top-down
 // camera); only the player arrow moves, via a cheap CSS transform.
-import { coastBands, HILL, POND, ISLETS } from './island.js';
-import { buildRoads, buildBlocks } from './layout.js';
-import { parkwayCenterR, parkwayCut, streetExtensions } from './parkway.js';
+import { coastBands, HILLS, hillRadii, POND, ISLETS } from './island.js';
+import { buildRoads } from './layout.js';
+import { getBlocks } from './city.js';
+import { parkwaySegments } from './parkway.js';
 
 const SIZE = 200; // CSS pixels (canvas is drawn at 2x for crispness)
 const PAD = 5;
@@ -88,7 +89,7 @@ export class Minimap {
     }
 
     // park / plaza blocks
-    for (const b of buildBlocks()) {
+    for (const b of getBlocks()) {
       const fill =
         b.type === 'park-central' || b.type === 'park' ? M.park :
         b.type === 'plaza' ? M.plaza : null;
@@ -97,16 +98,23 @@ export class Minimap {
       ctx.fillRect(px(b.x0), pz(b.z0), (b.x1 - b.x0) * s, (b.z1 - b.z0) * s);
     }
 
-    // central-park hill (soft shaded knoll) + pond
-    const g = ctx.createRadialGradient(px(HILL.x), pz(HILL.z), 0, px(HILL.x), pz(HILL.z), HILL.r * s);
-    g.addColorStop(0, M.hill);
-    g.addColorStop(1, 'rgba(78,143,60,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(px(HILL.x), pz(HILL.z), HILL.r * s, 0, Math.PI * 2);
-    ctx.fill();
+    // hills (soft shaded knolls, oval-aware) + reflecting pool
+    for (const H of HILLS) {
+      const { rx, rz } = hillRadii(H);
+      ctx.save();
+      ctx.translate(px(H.x), pz(H.z));
+      ctx.scale(rx * s, rz * s); // unit-circle gradient -> ellipse
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+      g.addColorStop(0, M.hill);
+      g.addColorStop(1, 'rgba(78,143,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(0, 0, 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     ctx.fillStyle = M.pond;
-    ctx.fillRect(px(POND.x - POND.a1), pz(POND.z - POND.a1), POND.a1 * 2 * s, POND.a1 * 2 * s);
+    ctx.fillRect(px(POND.x - POND.hx), pz(POND.z - POND.hz), POND.hx * 2 * s, POND.hz * 2 * s);
 
     // grid roads (min 1px so the narrow streets stay visible)
     ctx.fillStyle = M.road;
@@ -114,18 +122,6 @@ export class Minimap {
       const w = Math.max(r.width * s, 1);
       if (r.axis === 'x') ctx.fillRect(px(r.at) - w / 2, pz(r.from), w, (r.to - r.from) * s);
       else ctx.fillRect(px(r.from), pz(r.at) - w / 2, (r.to - r.from) * s, w);
-    }
-
-    // street extensions out to the parkway tees
-    for (const e of streetExtensions()) {
-      const w = Math.max(e.width * s, 1);
-      if (e.axis === 'x') {
-        const z0 = e.sgn * 636, z1 = e.sgn * e.L;
-        ctx.fillRect(px(e.at) - w / 2, pz(Math.min(z0, z1)), w, Math.abs(z1 - z0) * s);
-      } else {
-        const x0 = e.sgn * 636, x1 = e.sgn * e.L;
-        ctx.fillRect(px(Math.min(x0, x1)), pz(e.at) - w / 2, Math.abs(x1 - x0) * s, w);
-      }
     }
 
     // building footprints, straight from the static collision boxes —
@@ -138,21 +134,18 @@ export class Minimap {
       ctx.fillRect(px(b.minX), pz(b.minZ), Math.max(w * s, 0.7), Math.max(d * s, 0.7));
     }
 
-    // coastal parkway ring (broken across the south inlet)
+    // coastal parkway: independent hand-placed segments, each its own polyline
     ctx.strokeStyle = M.road;
     ctx.lineWidth = Math.max(12 * s, 1);
     ctx.lineCap = 'round';
-    let open = false;
-    ctx.beginPath();
-    for (let i = 0; i <= N; i++) {
-      const th = thAt(i % N);
-      if (parkwayCut(th)) { open = false; continue; }
-      const r = parkwayCenterR(th);
-      const x = px(r * Math.cos(th)), y = pz(r * Math.sin(th));
-      open ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-      open = true;
+    for (const seg of parkwaySegments()) {
+      ctx.beginPath();
+      seg.points.forEach(([x, z], i) => {
+        const sx = px(x), sy = pz(z);
+        i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+      });
+      ctx.stroke();
     }
-    ctx.stroke();
   }
 
   update(player) {
