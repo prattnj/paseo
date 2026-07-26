@@ -67,6 +67,26 @@ function plazaWing(g, col, runAxis, lo, hi, nearP, farP, gateC, y, H, seed) {
   const [gcx, gcz] = place(gateC, midP);
   archHeader(g, gcx, gcz, runAxis, gateW, t, y + 9, y + H, STONE);
 
+  // warm wall-lights lining the interior side walls of the gateway passage.
+  // The passage runs perpendicular (nearP -> farP) through the wall; a sconce
+  // sits proud of each side wall (at gateC +/- gateW/2), three along the depth.
+  for (const sgn of [-1, 1]) {
+    const al = gateC + sgn * (gateW / 2 - 0.15);   // face of a passage side wall
+    for (let i = 0; i < 3; i++) {
+      const perp = nearP + (farP - nearP) * ((i + 0.5) / 3);
+      const wy = y + 4.8;
+      const [bx, bz] = place(al - sgn * 0.12, perp); // bracket, flush to the wall
+      const [lx, lz] = place(al - sgn * 0.32, perp); // glowing lens, set proud
+      if (runAxis === 'x') {
+        g.box(bx, wy - 0.55, bz, 0.4, 0.5, 0.4, P.roofDark);
+        g.glowBox(lx, wy, lz, 0.22, 0.55, 0.5, P.lampWarm);
+      } else {
+        g.box(bx, wy - 0.55, bz, 0.4, 0.5, 0.4, P.roofDark);
+        g.glowBox(lx, wy, lz, 0.5, 0.55, 0.22, P.lampWarm);
+      }
+    }
+  }
+
   // continuous cornice band + parapet over the whole span
   const span = P3 - P0;
   faceBoxB((P0 + P3) / 2, midP, y + H, span, 1.8, t + 1.4, STONE_MD);

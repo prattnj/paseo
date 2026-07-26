@@ -8,6 +8,7 @@ import { movePlayer } from './collision.js';
 import { collideCarWorld, CAR_R, pitchLift } from './traffic.js';
 import { groundHeight, nearestBeach, WATER_Y, inReservoir, reservoirRespawn } from './island.js';
 import { gridCellAt } from './layout.js';
+import { mudFactor } from './blocks/construction.js';
 
 const WALK = 6;
 const SPRINT = 13;
@@ -28,7 +29,7 @@ export class Player {
     this.char = makeHumanoid({ shirt: 0xe04f43, pants: 0x37474f });
     scene.add(this.char.group);
 
-    this.pos = new THREE.Vector3(30, 0.2, -115); // Central Park spawn (east lawn, below the hill)
+    this.pos = new THREE.Vector3(30, 0.2, -115); // plaza spawn
     this.vel = new THREE.Vector3();
     this.yaw = -Math.PI / 2;      // face east, toward downtown
     this.pitch = 0.12;            // slight down-look
@@ -177,7 +178,8 @@ export class Player {
     if (k.has('KeyD')) ix += 1;
 
     const sprinting = k.has('ShiftLeft') || k.has('ShiftRight');
-    const speed = sprinting ? SPRINT : WALK;
+    // mud pits on the construction site drag the player down to ~72% speed
+    const speed = (sprinting ? SPRINT : WALK) * mudFactor(this.pos.x, this.pos.z);
 
     // camera-relative movement
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
@@ -341,6 +343,8 @@ export class Player {
     const k = this.keys;
     const c = this.car;
     const spec = c.spec;
+    // mud pits (construction site) sap grip: lower top speed & acceleration
+    const surf = mudFactor(c.mesh.position.x, c.mesh.position.z);
 
     let throttle = 0;
     if (k.has('KeyW')) throttle += 1;
@@ -367,13 +371,13 @@ export class Player {
     }
     this._boostFx = boosting;
     this.updateFlames(c, boosting, dt);
-    const limit = spec.maxSpeed * (boosting ? 1.5 : 1);
-    if (throttle > 0) v += spec.accel * (boosting ? 1.6 : 1) * dt;
+    const limit = spec.maxSpeed * (boosting ? 1.5 : 1) * surf;
+    if (throttle > 0) v += spec.accel * (boosting ? 1.6 : 1) * surf * dt;
     else if (throttle < 0) v -= spec.accel * (v > 0 ? 1.8 : 0.7) * dt; // brake > reverse
     else v -= v * 1.1 * dt; // coast drag
-    // ease back down when the boost runs out instead of snapping
+    // ease back down when the boost runs out (or we hit mud) instead of snapping
     if (v > limit) v = Math.max(limit, v - spec.accel * 1.2 * dt);
-    v = Math.max(-spec.maxSpeed * 0.35, Math.min(limit, v));
+    v = Math.max(-spec.maxSpeed * 0.35 * surf, Math.min(limit, v));
     if (throttle === 0 && Math.abs(v) < 0.05) v = 0;
 
     // turning circle: barely steers when crawling, full rate at speed

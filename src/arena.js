@@ -291,24 +291,6 @@ function nearParkway(x, z, rad) {
   return false;
 }
 
-function groundsTrees(g, col) {
-  const sX0 = FX0 - M - SD - 2, sX1 = FX1 + M + SD + 2; // bowl footprint + margin
-  const sZ0 = FZ0 - M - SD - 2, sZ1 = FZ1 + M + SD + 2;
-  const keepOut = (x, z) => {
-    if (!onLand(x, z)) return true;                          // off the plateau / past the coast
-    if (z > -782) return true;                               // south concourse + perimeter street
-    if (x > sX0 && x < sX1 && z > sZ0 && z < sZ1) return true; // the bowl itself
-    if (inRect(x, z, -310, -818, 96, 44, 3)) return true;   // east parking lot
-    if (inRect(x, z, -578, -806, 96, 40, 3)) return true;   // west parking lot
-    if (inRect(x, z, -310, -790, 12, 24, 3)) return true;   // east driveway
-    if (inRect(x, z, -578, -784, 12, 16, 3)) return true;   // west driveway
-    if (nearParkway(x, z, 11)) return true;                 // coastal parkway (road + walk + buffer)
-    return false;
-  };
-  const r = { x0: -680, z0: -920, x1: -235, z1: -782 };
-  scatterTrees(g, col, r, hash(883, 7), 6, 0.75, 1.15, keepOut);
-}
-
 // ---- entry --------------------------------------------------------------
 export function buildArena(g, col) {
   field(g);
@@ -345,5 +327,4 @@ export function buildArena(g, col) {
   announcerBox(g, col);
   gateArch(g, col);
   surrounds(g, col);
-  groundsTrees(g, col); // must run last: it avoids every collider added above
 }

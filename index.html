@@ -54,6 +54,12 @@
       }
       #speedo .num { font-size: 36px; font-weight: 600; line-height: 1; }
       #speedo .unit { font-size: 11px; letter-spacing: 3px; opacity: 0.75; }
+      #fps {
+        position: fixed; top: 6px; left: 8px; z-index: 5;
+        font-family: 'Segoe UI', system-ui, sans-serif; font-size: 10px;
+        color: rgba(255, 255, 255, 0.28); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        letter-spacing: 0.5px; pointer-events: none; user-select: none;
+      }
       #minimap {
         position: fixed; left: 44px; bottom: 44px; width: 200px; height: 200px;
         border-radius: 12px; overflow: hidden; z-index: 5;
@@ -82,6 +88,7 @@
       <div class="start">Click to walk</div>
     </div>
     <div id="hint"></div>
+    <div id="fps">-- fps</div>
     <div id="speedo"><span class="num">0</span> <span class="unit">MPH</span></div>
     <div id="boost"><div class="label">BOOST</div><div class="track"><div class="fill"></div></div></div>
     <div id="minimap"><canvas></canvas><div class="arrow"></div></div>

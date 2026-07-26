@@ -58,6 +58,39 @@ function scatterTrees(g, col, r, seed, step, sMin, sMax, keepOut = null) {
   }
 }
 
+// Fill an axis-aligned rectangle (opposite corners x1..x2 / z1..z2, given in
+// any order) with `count` trees at deterministic, non-overlapping positions —
+// a count-based companion to scatterTrees (which is density/step based). Made
+// for hand-filling leftover green-belt gaps around the map edge: pass the gap's
+// corners and how many trees you want. Trees keep clear of any pre-existing
+// colliders (buildings, the lighthouse, …) and space themselves out; if the
+// rectangle is too cramped to seat all `count`, it plants as many as fit and
+// returns that number. `seed` makes two adjacent fills differ.
+function treeFill(g, col, x1, x2, z1, z2, count, seed = 0) {
+  const x0 = Math.min(x1, x2), xe = Math.max(x1, x2);
+  const z0 = Math.min(z1, z2), ze = Math.max(z1, z2);
+  const solid = col.boxes.length;  // trees planted here don't block later ones
+  const m = 1.2;                    // keep trunks off the exact edge
+  const spanX = Math.max(0, xe - x0 - 2 * m), spanZ = Math.max(0, ze - z0 - 2 * m);
+  const placed = [];
+  for (let i = 0; i < count; i++) {
+    // try a few decorrelated candidate spots for tree i; take the first that
+    // clears the buildings and the trees already placed this fill
+    for (let t = 0; t < 12; t++) {
+      const hk = hash(seed, i, t);
+      // decorrelated 2D scatter (nested hash — see util.js frac caveat)
+      const px = x0 + m + frac(hash(hk, 1), 5) * spanX;
+      const pz = z0 + m + frac(hash(hk, 2), 9) * spanZ;
+      if (occupied(col, px, pz, 1.2, solid)) continue;
+      if (placed.some((q) => Math.hypot(px - q.x, pz - q.z) < 2.6)) continue;
+      tree(g, col, px, pz, 0.85 + frac(hk, 4, 9) * 0.5, hash(hk, 5) % 3);
+      placed.push({ x: px, z: pz });
+      break;
+    }
+  }
+  return placed.length;
+}
+
 function bench(g, col, x, z, ry = 0) {
   const c = Math.cos(ry), s = Math.sin(ry);
   const at = (dx, dz) => [x + dx * c + dz * s, z - dx * s + dz * c];
@@ -293,6 +326,6 @@ function kiosk(g, col, x, z, seed, ry = 0) {
   col.add(x, 0, z, 2.8, 3.4, 2.8, ry);
 }
 
-export { tree, scatterTrees, bench, lamp, fountain, hedge, fenceRun,
+export { tree, scatterTrees, treeFill, bench, lamp, fountain, hedge, fenceRun,
   parkedCar, curbsideParking, planter, dumpster, pool, swingSet, flowerBed,
   slide, sandbox, gazebo, kiosk, trashCluster };

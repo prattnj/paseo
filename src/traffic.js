@@ -2,7 +2,6 @@
 // the road network, plus parked cars registered by the city builder.
 // Every car (moving or parked) can be hijacked and driven by the player.
 import * as THREE from 'three';
-import { mat } from './character.js';
 import { PALETTE as P } from './palette.js';
 import { PARKED } from './blocks/index.js';
 import { groundHeight } from './island.js';
@@ -38,6 +37,11 @@ const LOOPS = [
   { pts: rectLoop(115, 115, 335, 445), cars: 10 },    // SE industrial
   { pts: rectLoop(335, -225, 445, 115, -2.6), cars: 8, reverse: true },  // east midrise
   { pts: rectLoop(-225, -445, 115, -225, -2.6), cars: 8, reverse: true }, // apartments N
+  // far edges — keep traffic present all the way out to the city rim
+  { pts: rectLoop(-665, -665, -225, -445), cars: 10 },  // north upper-class suburbs
+  { pts: rectLoop(-665, -115, -445, 115), cars: 8 },    // far-west apartments
+  { pts: rectLoop(445, -115, 775, 335), cars: 14 },     // far-east lower suburbs
+  { pts: rectLoop(115, 555, 445, 775), cars: 10 },      // south industrial belt
 ];
 
 // Driving characteristics per car type.
@@ -56,12 +60,18 @@ export const SPECS = {
   // still driveable through the streets.
   ladder: { maxSpeed: 24, accel: 15, turn: 1.30, halfLen: 4.5, hoodH: 1.45 },
   pumper: { maxSpeed: 26, accel: 16, turn: 1.50, halfLen: 3.6, hoodH: 1.45 },
+  // Top Fuel dragster (only the two staged at the west-side drag strip — never
+  // spawned into traffic loops). Absurdly fast with brutal acceleration and a
+  // long wheelbase that barely turns — built for the strip, a handful on the
+  // street. Tune maxSpeed/accel to taste; these are deliberately extreme.
+  dragster: { maxSpeed: 100, accel: 95, turn: 1.15, halfLen: 4.0, hoodH: 1.0 },
 };
 
 // Collision footprint: three discs along the car's long axis.
 export const CAR_R = 1.05;
 
 const SPORTS_COLORS = [0xe0342b, 0xf4c518, 0xf3701d, 0x2fbf71];
+const DRAG_COLORS = [0xe0342b, 0x2b6fe0, 0xf4c518, 0xf3701d];
 
 // shared geometry cache — parked cars would otherwise allocate hundreds of boxes
 const _geo = new Map();
@@ -70,22 +80,82 @@ function boxGeo(w, h, d) {
   if (!_geo.has(k)) _geo.set(k, new THREE.BoxGeometry(w, h, d));
   return _geo.get(k);
 }
-function part(g, w, h, d, hex, x, y, z, shadow = true) {
-  const m = new THREE.Mesh(boxGeo(w, h, d), mat(hex));
-  m.position.set(x, y, z);
-  m.castShadow = shadow;
-  g.add(m);
-  return m;
+
+// One shared vertex-coloured material for every car. Each car's parts are baked
+// into a SINGLE merged mesh (see mergeCar), so the whole scene's ~1500 cars are
+// ~1500 nodes instead of ~13500 — the renderer's per-object matrix + frustum
+// cost (the frame's real bottleneck) scales with node count, not triangles.
+const carMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+
+// `part`/`roundWheel`/`wheels` no longer build meshes — they push a positioned,
+// coloured geometry descriptor onto `parts`, which makeCar merges in one pass.
+// (The `shadow` arg is kept for call-site compatibility but is now a no-op: the
+// whole car casts or not as a unit, toggled per-car by setCarShadow.)
+function part(parts, w, h, d, hex, x, y, z, shadow = true) {
+  parts.push({ geo: boxGeo(w, h, d), hex, x, y, z });
 }
 
-function wheels(g, zOff = 1.3) {
+function wheels(parts, zOff = 1.3) {
   for (const [wx, wz] of [[-0.85, zOff], [0.85, zOff], [-0.85, -zOff], [0.85, -zOff]]) {
-    part(g, 0.28, 0.55, 0.55, 0x24262b, wx, 0.3, wz, false);
+    roundWheel(parts, wx, 0.3, wz, 0.3, 0.3, 0x24262b, 14);
   }
 }
 
+// A properly round wheel: a cylinder laid on its side so the axle runs along
+// the car's x-axis (used by the dragster's fat slicks and needle-nose fronts).
+function roundWheel(parts, x, y, z, radius, width, hex, seg = 16) {
+  const geo = new THREE.CylinderGeometry(radius, radius, width, seg);
+  geo.rotateZ(Math.PI / 2); // stand the cylinder on its side, axle along +x
+  parts.push({ geo, hex, x, y, z });
+}
+
+// Bake a list of positioned, coloured part geometries into one BufferGeometry
+// with per-vertex colours. Parts never move relative to the car, so this is
+// lossless — the merged mesh animates as a rigid body via its own transform.
+function mergeCar(parts) {
+  const c = new THREE.Color();
+  let total = 0;
+  const baked = parts.map((p) => {
+    let g = p.geo.clone().translate(p.x, p.y, p.z);
+    if (g.index) g = g.toNonIndexed();
+    total += g.attributes.position.count;
+    return g;
+  });
+  const pos = new Float32Array(total * 3);
+  const nor = new Float32Array(total * 3);
+  const col = new Float32Array(total * 3);
+  let o = 0;
+  baked.forEach((g, i) => {
+    const pa = g.attributes.position.array, na = g.attributes.normal.array;
+    c.set(parts[i].hex);
+    for (let j = 0; j < pa.length; j += 3) {
+      pos[o] = pa[j];     pos[o + 1] = pa[j + 1];     pos[o + 2] = pa[j + 2];
+      nor[o] = na[j];     nor[o + 1] = na[j + 1];     nor[o + 2] = na[j + 2];
+      col[o] = c.r;       col[o + 1] = c.g;           col[o + 2] = c.b;
+      o += 3;
+    }
+    g.dispose();
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
+// Toggle shadow-casting for a whole car. Parked cars (the ~1500 registered
+// citywide) sit motionless, so casting them into the sun's map every shadow
+// update is ~8 wasted draw calls each — by far the scene's biggest cost. We
+// switch a car's cast off while parked and back on the moment it moves, which
+// drops the shadow pass from ~12.6k draw calls to a few hundred with no visible
+// loss (a stationary car's low ground shadow reads against the building shadows
+// already there). See the reconcile in update().
+function setCarShadow(mesh, on) {
+  mesh.traverse((o) => { if (o.isMesh) o.castShadow = on; });
+}
+
 function makeCar(seed, type) {
-  const g = new THREE.Group();
+  const g = []; // parts accumulator (positioned, coloured geometry descriptors)
   if (type === 'truck') {
     const body = pick(P.carBodies, seed, 1);
     part(g, 1.9, 0.7, 5.2, body, 0, 0.75, 0);
@@ -108,6 +178,38 @@ function makeCar(seed, type) {
     part(g, 0.12, 0.5, 0.12, 0x24262b, -0.7, 1.0, -1.95, false);
     part(g, 0.12, 0.5, 0.12, 0x24262b, 0.7, 1.0, -1.95, false);
     wheels(g, 1.4);
+  } else if (type === 'dragster') {
+    // Top Fuel dragster, nose along +z (forward). A long slender chassis tube
+    // rides between tiny front wheels way out on a needle nose and two huge
+    // fat rear slicks; between them sits an exposed blown engine (block +
+    // supercharger + injector hat) flanked by zoomie headers, a small cockpit
+    // just ahead of the rear axle, and a big rear wing on struts.
+    const body = pick(DRAG_COLORS, seed, 1);
+    const DK = 0x1a1b1e, MET = 0xb8bcc0, CHR = 0xd7dbdf;
+    part(g, 0.5, 0.32, 6.6, body, 0, 0.55, 0.3);            // chassis tube
+    part(g, 0.34, 0.26, 1.6, body, 0, 0.5, 3.7);            // needle nose
+    part(g, 2.0, 0.07, 0.5, DK, 0, 0.44, 4.2);              // front wing
+    part(g, 1.9, 0.05, 0.4, body, 0, 0.52, 4.15);
+    part(g, 1.7, 0.08, 0.08, DK, 0, 0.3, 3.5, false);       // front axle
+    for (const sx of [-1, 1]) roundWheel(g, sx * 0.85, 0.3, 3.5, 0.3, 0.16, DK, 14); // front wheels
+    part(g, 0.62, 0.5, 1.5, body, 0, 0.78, -1.5);           // cockpit fairing
+    part(g, 0.5, 0.36, 0.5, P.glassDark, 0, 1.06, -1.1);    // headrest / screen
+    part(g, 0.55, 0.5, 0.12, DK, 0, 1.2, -2.05, false);     // roll hoop
+    part(g, 0.86, 0.7, 1.3, MET, 0, 0.75, 0.1);             // engine block
+    part(g, 0.7, 0.5, 0.72, DK, 0, 1.18, 0.15);             // supercharger
+    part(g, 0.82, 0.18, 0.82, CHR, 0, 1.5, 0.15);           // injector hat
+    for (const sx of [-1, 1]) for (let i = 0; i < 4; i++)   // zoomie headers
+      part(g, 0.16, 0.16, 0.44, CHR, sx * 0.62, 0.92, 0.6 - i * 0.32, false);
+    part(g, 1.9, 0.12, 0.12, DK, 0, 0.72, -2.7, false);     // rear axle
+    for (const sx of [-1, 1]) roundWheel(g, sx * 1.12, 0.72, -2.7, 0.72, 0.95, DK, 22); // fat rear slicks
+    for (const sx of [-1, 1]) roundWheel(g, sx * 1.12, 0.72, -2.7, 0.34, 1.02, MET, 12); // hubs (poke proud of the tyre)
+    // rear wing: struts embed up into the plane, endplates enclose the tips
+    // (proud on every side), a gurney bar straddles the trailing edge — no two
+    // like-coloured faces are ever coplanar, so nothing z-fights.
+    for (const sx of [-1, 1]) part(g, 0.1, 0.95, 0.5, DK, sx * 0.85, 1.48, -3.35, false); // struts
+    part(g, 2.3, 0.1, 0.95, body, 0, 1.95, -3.4);           // wing plane
+    part(g, 2.3, 0.12, 0.12, DK, 0, 2.0, -3.82, false);     // gurney bar (on the top-rear edge)
+    for (const sx of [-1, 1]) part(g, 0.12, 0.62, 1.06, body, sx * 1.3, 1.68, -3.4, false); // endplates
   } else if (type === 'ladder' || type === 'pumper') {
     // Parts are stacked so an upper piece's underside sits just *below* the
     // piece it rests on (never exactly coplanar), and surface details are
@@ -142,14 +244,16 @@ function makeCar(seed, type) {
       part(g, 0.14, 0.5, 0.14, 0xd6dade, 0.02, 3.05, 0.65, false);  // deck-gun barrel
     }
     const rz = -F + 1.9, fz = F - 1.6;
-    for (const wz of [fz, rz, rz - 1.5]) for (const sx of [-1, 1]) part(g, 0.4, 0.82, 0.82, 0x141518, sx * 1.09, 0.42, wz, false); // outer proud of cab/body
+    for (const wz of [fz, rz, rz - 1.5]) for (const sx of [-1, 1]) roundWheel(g, sx * 1.09, 0.42, wz, 0.41, 0.4, 0x141518, 16); // round tyres, three axles
   } else {
     const body = pick(P.carBodies, seed, 1);
     part(g, 1.9, 0.7, 4.1, body, 0, 0.75, 0);
     part(g, 1.7, 0.62, 2.0, hash(seed, 3) % 3 === 0 ? body : P.glassDark, 0, 1.35, -0.2);
     wheels(g);
   }
-  return g;
+  const mesh = new THREE.Mesh(mergeCar(g), carMat);
+  mesh.castShadow = true;
+  return mesh;
 }
 
 function loopLength(pts) {
@@ -299,11 +403,15 @@ export class Traffic {
     const spec = SPECS[type];
     const mesh = makeCar(carSeed, type);
     mesh.rotation.order = 'YXZ'; // yaw first, then tumble pitch in car frame
+    // Parked cars don't cast until they move (see setCarShadow + update()).
+    const castShadow = mode !== 'parked';
+    if (!castShadow) setCarShadow(mesh, false);
     scene.add(mesh);
     const box = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
     this.boxes.push(box);
     const c = {
       mesh, box, type, spec, mode, pts, L, y, dist, speed, gi,
+      castsShadow: castShadow, // tracks mesh cast state; reconciled in update()
       v: mode === 'loop' ? speed : 0, off: { x: 0, z: 0 },
       everDriven: false, pushVel: { x: 0, z: 0 }, _blocked: false,
       air: null, pitch: 0, flipped: false, boost: 1,
@@ -366,6 +474,13 @@ export class Traffic {
 
   update(dt, player = null) {
     for (const c of this.cars) {
+      // A car casts a shadow only while it's actually moving; parked cars stay
+      // off to keep the shadow pass cheap. Flip the mesh only on a real change.
+      const wantsShadow = c.mode !== 'parked';
+      if (wantsShadow !== c.castsShadow) {
+        setCarShadow(c.mesh, wantsShadow);
+        c.castsShadow = wantsShadow;
+      }
       if (c.mode === 'driven') continue;
       c.boost = Math.min(1, c.boost + dt / 20); // idle cars regain boost
       // shoved cars (from collisions) slide with friction until they stop

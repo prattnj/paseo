@@ -12,27 +12,29 @@ const SHIRTS = [0x4a90d9, 0xe04f43, 0xf4c542, 0x3aa7a3, 0xe07f9a, 0x8bc34a, 0xf2
 const PANTS = [0x37474f, 0x5d4037, 0x455a64, 0x263238, 0x6d4c41];
 const SKINS = [0xf0c8a0, 0xc68863, 0x8d5524, 0xffdbac];
 
-// Blocks that get pedestrian loops (grid cell coords from layout.js).
+// Blocks that get pedestrian loops (grid cell coords from layout.js). Each
+// loop walks the sidewalk band around ONE ordinary built block, so every cell
+// listed must be a real district cell with roads on all four sides — never a
+// cell inside a superblock (central park 5,6..7,8 / plaza 8,6..10,8 /
+// construction 12,11..14,13), whose interior has hills/courtyards and NO
+// sidewalk. Loops are spread across the whole city so pedestrians aren't
+// clustered in the centre.
 const LOOP_CELLS = [
-  [5, 4, 6, 5],  // plaza
-  [6, 4, 7, 5],  // city hall
-  [4, 5, 5, 6],  // fire station block
-  [5, 5, 6, 6],  // downtown SE of center
-  [4, 3, 5, 4],  // downtown NW
-  [4, 2, 5, 3],  // apartments north
-  [6, 5, 7, 6],  // downtown east
-  // outskirts — suburbs, industrial, apartments, old town
-  [5, 7, 6, 8],  // south blocks
-  [6, 8, 7, 9],  // far south
-  [7, 7, 8, 8],  // SE corner
-  [6, 6, 7, 7],  // SE midrise
-  [6, 7, 7, 8],  // SE blocks
-  [7, 6, 8, 7],  // industrial edge
-  [3, 1, 4, 2],  // apartments NW
-  [5, 1, 6, 2],  // apartments N
-  [7, 4, 8, 5],  // east midrise
+  // north — upper-class suburbs
+  [2, 1, 3, 2], [5, 1, 6, 2], [3, 3, 4, 4], [7, 3, 8, 4],
+  // west — apartments
+  [1, 8, 2, 9], [3, 6, 4, 7], [2, 9, 3, 10],
+  // commercial midrise ring
+  [3, 4, 4, 5], [11, 4, 12, 5], [12, 5, 13, 6],
+  // downtown core (around, never through, the central-park superblock)
+  [5, 5, 6, 6], [9, 5, 10, 6], [7, 7, 8, 8], [10, 6, 11, 7],
+  [8, 11, 9, 12], [9, 9, 10, 10],
+  // east — lower-class suburbs
+  [12, 6, 13, 7], [14, 8, 15, 9], [15, 10, 16, 11], [13, 10, 14, 11],
+  // south — industrial
+  [9, 13, 10, 14], [11, 13, 12, 14], [10, 14, 11, 15],
 ];
-const PEDS_PER_LOOP = 9;
+const PEDS_PER_LOOP = 6;
 
 // A loop is only valid if every cell it spans is a built block; a loop over a
 // removed cell would put pedestrians out on the water/void. Guards the list

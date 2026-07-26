@@ -31,6 +31,9 @@ const TEMPLATES = {
   pyr: () => new THREE.ConeGeometry(0.5, 1, 4, 1, false, Math.PI / 4),
   ico: () => new THREE.IcosahedronGeometry(0.5, 0),
   ico2: () => new THREE.IcosahedronGeometry(0.5, 2), // smoother sphere (domes)
+  // wheel: a cylinder with its axle baked along local X (unit radius 0.5,
+  // unit width 1). The instance's y-rotation then steers the axle sideways.
+  wheel: () => { const g = new THREE.CylinderGeometry(0.5, 0.5, 1, 14); g.rotateZ(Math.PI / 2); return g; },
   prism: prismGeometry,
 };
 
@@ -76,6 +79,13 @@ export class GeoBatch {
   cyl(cx, y, cz, rTop, rBot, h, hex) {
     const kind = rTop < rBot ? 'cylT' : 'cyl';
     this._p(kind, cx, y + h / 2, cz, rBot * 2, h, rBot * 2, 0, hex);
+  }
+
+  // A round wheel: cylinder whose axle is baked along local X, centered at
+  // (cx, cy, cz) with cy the axle height. `ry` steers the axle in world space,
+  // so add PI/2 to a car's yaw to lay the axle across its travel direction.
+  wheel(cx, cy, cz, radius, width, hex, ry = 0) {
+    this._p('wheel', cx, cy, cz, width, radius * 2, radius * 2, ry, hex);
   }
 
   // Cone, base at y (seg 4 = square pyramid aligned to the axes).

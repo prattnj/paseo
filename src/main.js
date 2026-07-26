@@ -6,6 +6,9 @@ import { Player } from './player.js';
 import { Traffic } from './traffic.js';
 import { Pedestrians } from './peds.js';
 import { Balls, BALL_SPAWNS } from './balls.js';
+import { Lighthouse } from './lighthouse.js';
+import { buildForest } from './forest.js';
+import { Smoke } from './factory.js';
 import { Minimap } from './minimap.js';
 import { Speakers } from './speakers.js';
 
@@ -41,13 +44,21 @@ sun.shadow.camera.top = S;
 sun.shadow.camera.bottom = -S;
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 1.0; // larger frustum/texel needs a normal offset vs acne
+// The sun is fixed and the whole static city casts into a 4096² map — re-rendering
+// that every frame is the scene's single biggest cost. Only actors move, so we drive
+// the shadow map manually (see the loop) and refresh it every few frames instead.
+sun.shadow.autoUpdate = false;
+sun.shadow.needsUpdate = true; // render it once for the title-screen frame
 scene.add(sun, sun.target);
 
 // ---- world ----
 const colliders = new Colliders();
 buildIsland(scene, colliders);
 buildCity(scene, colliders);
+buildForest(scene, colliders);
 
+const lighthouse = new Lighthouse(scene, colliders);
+const smoke = new Smoke(scene);
 const traffic = new Traffic(scene, colliders);
 const player = new Player(scene, camera, colliders, traffic);
 const peds = new Pedestrians(scene, colliders);
@@ -104,9 +115,23 @@ sun.target.position.set(0, 0, 0);
 sun.target.updateMatrixWorld();
 sun.shadow.camera.updateProjectionMatrix();
 
+const fpsEl = document.getElementById('fps');
+let fpsAccum = 0; // smoothed frame time (s), EMA
+let fpsSince = 0; // time since last readout refresh
+let shadowTick = 0; // drives the throttled shadow-map refresh
+
 function tick() {
   requestAnimationFrame(tick);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const raw = clock.getDelta();
+  const dt = Math.min(raw, 0.05);
+
+  // tiny fps readout — EMA-smoothed, refreshed a few times a second
+  fpsAccum = fpsAccum ? fpsAccum * 0.9 + raw * 0.1 : raw;
+  fpsSince += raw;
+  if (fpsEl && fpsSince > 0.25) {
+    fpsSince = 0;
+    fpsEl.textContent = Math.round(1 / fpsAccum) + ' fps';
+  }
 
   // Paused (pointer unlocked / overlay showing): freeze the world — no player
   // control, no cars, peds, balls, or speaker animation — but keep rendering the
@@ -117,7 +142,13 @@ function tick() {
     traffic.update(dt, player);
     peds.update(dt, traffic, player);
     balls.update(dt, player, traffic);
+    lighthouse.update(dt);
     speakers.update(dt, player, bgm);
+
+    // Refresh the (manually driven) shadow map every 3rd active frame. Static
+    // casters never change; this only re-captures moving actors, and 20fps
+    // shadow updates on cars/peds are imperceptible. Paused → skip entirely.
+    if (shadowTick++ % 3 === 0) sun.shadow.needsUpdate = true;
   }
 
   // near-car HUD hint
@@ -149,6 +180,7 @@ function tick() {
   }
 
   minimap.update(player);
+  smoke.update(dt); // smoke drifts even while paused, so the plant is never dead
 
   renderer.render(scene, camera);
 }

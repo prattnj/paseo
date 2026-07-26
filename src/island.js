@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { mat } from './character.js';
 import { hash, frac } from './util.js';
 import { COAST, SAND } from './coast-data.js';
+import { SIDEWALK_H } from './palette.js';
 
 export const TOP_Y = -0.06;       // plateau surface (city ground level)
 export const BEACH_Y = -6.06;     // sand surface at the cliff base
@@ -158,10 +159,21 @@ export const HILLS = [
   { x: -310, z: -175, rx: 15, rz: 30, top: 2, h: 12, trees: 100 },
   { x: -300, z: -193, r: 13, top: 2, h: 10, trees: 80 },
   // northeast coast
-  { x: 610, z: -505, r: 66, top: 6, h: 18, trees: 210 },
-  { x: 520, z: -510, r: 50, top: 6, h: 18, trees: 210 },
-  { x: 450, z: -505, rx: 80, rz: 50, top: 6, h: 18, trees: 420 },
-  //{ x: 500, z: -500, r: 50, top: 6, h: 18, trees: 210 },
+  { x: 610, z: -505, r: 66, top: 4, h: 20, trees: 210 },
+  { x: 520, z: -510, r: 50, top: 3, h: 18, trees: 210 },
+  { x: 450, z: -505, rx: 80, rz: 50, top: 4, h: 18, trees: 420 },
+  { x: 345, z: -490, rx: 65, rz: 30, top: 2, h: 16, trees: 420 },
+  // by lighthouse
+  { x: -720, z: 325, r: 80, top: 2, h: 30, trees: 700 },
+  { x: -810, z: 377, r: 60, top: 4, h: 18, trees: 400 },
+  { x: -804, z: 313, r: 35, top: 4, h: 18, trees: 210 },
+  { x: -787, z: 271, r: 25, top: 2, h: 13, trees: 210 },
+  { x: -853, z: 328, r: 20, top: 2, h: 10, trees: 210 },
+  { x: -674, z: 261, r: 20, top: 2, h: 13, trees: 110 },
+  { x: -504, z: 275, r: 35, top: 2, h: 20, trees: 300 },
+  { x: -600, z: 290, rx: 90, rz: 50, top: 3, h: 18, trees: 600 },
+  { x: -883, z: 398, rx: 40, rz: 65, top: 3, h: 18, trees: 600 },
+  { x: -451, z: 258, rx: 70, rz: 20, top: 1, h: 12, trees: 200 },
 ];
 
 // The main hill (the gazebo one) — buildings.js keys the central-park grass
@@ -212,6 +224,48 @@ export function hillHeight(x, z) {
   return h;
 }
 
+// ---- construction-site dirt hills ---------------------------------------
+// Tall, climbable spoil heaps piled inside the construction superblock (grid
+// cell 12,11, centred ~(555,445)). Rendered as bare-dirt cones in
+// blocks/construction.js; here they contribute walkable height so the player
+// can actually climb them. The visual mesh is built from the SAME moundProf
+// below, so the faceted surface and the walkable surface coincide. Positions
+// are hand-tuned to clear the site's skeletons, crane, vehicles and mud pits.
+export const CONSTRUCTION_MOUNDS = [
+  { x: 467, z: 417, r: 13, h: 11 },
+  { x: 552, z: 373, r: 15, h: 13 },
+  { x: 622, z: 445, r: 14, h: 12 },
+  { x: 508, z: 455, r: 14, h: 12 },
+  { x: 580, z: 512, r: 13, h: 11 },
+];
+
+// Rounded conical-heap profile: 1 at the peak (q=0), 0 at the rim (q=1), with a
+// smoothstep-rounded summit + toe and a near-linear flank. The heights above
+// (h/r ≈ 0.85) keep the steepest flank slope ~0.75 — comfortably under the
+// movePlayer walkable-slope limit (~1.05), so the heaps climb without the
+// steep-rock refusal that guards the island scarp.
+export function moundProf(q) {
+  if (q <= 0) return 1;
+  if (q >= 1) return 0;
+  const b = 0.16; // share of the profile given to the rounded ends
+  return 1 - ((1 - b) * q + b * q * q * (3 - 2 * q));
+}
+
+// Extra walkable height from the tallest overlapping construction mound (0 if
+// none). Includes the SIDEWALK_H dirt-floor base so a mound's rim sits flush
+// with the surrounding site floor (which is a slab collider at that height).
+export function moundHeight(x, z) {
+  let best = 0;
+  for (const m of CONSTRUCTION_MOUNDS) {
+    const dx = x - m.x, dz = z - m.z;
+    const d = Math.hypot(dx, dz);
+    if (d >= m.r) continue;
+    const y = SIDEWALK_H + m.h * moundProf(d / m.r);
+    if (y > best) best = y;
+  }
+  return best;
+}
+
 // Central-park reflecting pool footprint (rectangle, long axis N–S on the east
 // side). Built as a raised stone-edged pool on top of the lawn (buildCentralPark
 // in buildings.js), so the plateau is no longer carved beneath it.
@@ -222,7 +276,7 @@ export const POND = { x: -137, z: -115, hx: 8, hz: 90 };
 export function groundHeight(x, z) {
   const rg = reservoirGround(x, z);
   if (rg !== null) return rg; // the berm/basin overrides the plateau here
-  return baseGround(x, z) + hillHeight(x, z);
+  return baseGround(x, z) + hillHeight(x, z) + moundHeight(x, z);
 }
 
 // Base terrain height with no hills. Surfaces slope linearly between the coast

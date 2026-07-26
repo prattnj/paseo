@@ -36,6 +36,27 @@ export const PALETTE = {
   awnings: [0xe04f43, 0x4a90d9, 0xf4c542, 0x3aa7a3, 0xe07f9a],
   towerBodies: [0xf2f4f5, 0xdde3e8, 0xc9d6d4, 0xe9e4d2],
   carBodies: [0xe04f43, 0x4a90d9, 0xf4c542, 0xf2f4f5, 0x3aa7a3, 0xf39a3a, 0x55585e],
+  // construction site: churned dirt, wet mud, gravel, raw rock, rusty rebar,
+  // machine yellow/orange and structural steel.
+  dirt: 0x8a6d4a,
+  dirtDark: 0x6f5636,
+  dirtLight: 0x9d8054,
+  mud: 0x4b3826,
+  gravel: 0x9b948b,
+  rock: 0x8c8882,
+  rockDark: 0x6f6b65,
+  rust: 0x9a5a34,
+  constrYellow: 0xf2b600,
+  constrOrange: 0xe4622a,
+  steel: 0x565d67,
+  // WW2-era manufacturing plant: weathered red brick in a few soot-graded
+  // shades, grimy factory glazing, and charred/blown-out voids.
+  brick: 0x9c4a38,
+  brickDark: 0x6e3325,   // shadowed courses, plinths, buttress sides
+  brickLight: 0xb35c44,  // sun-caught brick, corbel bands
+  brickSoot: 0x4a352c,   // heavily soot-stained brick around the stacks
+  factoryGlass: 0x33414d, // grimy multi-pane industrial glazing
+  sootBlack: 0x1c1712,   // charred beams, blown-out window voids, burnt interior
   testRed: 0xff0000,
   testYellow: 0xffff00,
   testCyan: 0x00ffff,

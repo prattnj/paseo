@@ -7,10 +7,15 @@ import { buildParkway } from './parkway.js';
 import { buildPaths } from './paths.js';
 import { buildArena } from './arena.js';
 import { buildManor } from './manor.js';
+import { buildHedgerows } from './hedgerow.js';
+import { buildDragstrip } from './dragstrip.js';
+import { buildFactory } from './factory.js';
+import { buildFoodTrucks } from './foodtrucks.js';
 import { hash, frac } from './util.js';
 import { PALETTE as P, SIDEWALK_H } from './palette.js';
 import {
   tree, bench, lamp, curbsideParking,
+  treeFill,
   buildApartments, buildDowntown, buildOldtown, buildMidrise,
   buildSuburbA, buildSuburbB, buildIndustrial, buildPark, buildCentralPark, buildDirtyPark, buildPlaza,
   buildFireStation, buildChurch,
@@ -56,7 +61,7 @@ const BAYWALK_CUTS = [
   { x: [-665, -657], at: -438 },
   { x: [-665, -657], at: -122 },
   { x: [-775, -767], at: -12 },
-  { x: [-673, -657], at: 232 },
+  //{ x: [-673, -657], at: 232 },
   { z: [-115, -107], at: -672 },
   { x: [107, 123], at: -452 },
   { x: [-233, -225], at: -782 },
@@ -303,7 +308,7 @@ const EXTRA_CROSSWALKS = [
   { x: -768.5, z: 0, span: 'z', avenue: true },
   { x: -775, z: 218.5, span: 'x' },
   { x: -768.5, z: 225, span: 'z' },
-  { x: -665, z: 231.5, span: 'x' },
+  //{ x: -665, z: 231.5, span: 'x' },
   { x: 0, z: 768.5, span: 'x', avenue: true },
   { x: 11.5, z: 775, span: 'z' },
   { x: 445, z: 768.5, span: 'x' },
@@ -355,6 +360,22 @@ function buildClouds(g) {
   }
 }
 
+// ---- tree fills ---------------------------------------------------------
+// Hand-placed clumps of trees for the leftover green-belt gaps around the map
+// edge. Each entry is a rectangle (corners in any order) and `n`, how many
+// trees to scatter into it — placement is deterministic and keeps clear of
+// buildings and of the other trees in the fill. Walk the gap in-game (player.js
+// logs x/z to the console) to read off the corners.
+const TREE_FILLS = [
+  // { x1: -985, x2: -900, z1: 300, z2: 520, n: 40 },
+];
+
+function buildTreeFills(g, col) {
+  for (const f of TREE_FILLS) {
+    treeFill(g, col, f.x1, f.x2, f.z1, f.z2, f.n, hash(Math.round(f.x1), Math.round(f.z1)));
+  }
+}
+
 // ---- main entry ---------------------------------------------------------
 export function buildCity(scene, col) {
   const g = new GeoBatch();
@@ -370,6 +391,10 @@ export function buildCity(scene, col) {
   buildExtras(g, col);
   buildArena(g, col);
   buildManor(g, col, scene);
+  buildHedgerows(g, col);
+  buildDragstrip(g, col, scene);
+  buildFactory(g, col);
+  buildFoodTrucks(g, col, scene);
 
   for (const b of resolveBlocks()) {
     const seed = hash(Math.round(b.x0), Math.round(b.z0));
@@ -377,6 +402,8 @@ export function buildCity(scene, col) {
     if (fn) fn(g, col, b, seed, scene);
     else console.warn(`CITY: no builder for type '${b.type}' (cell ${b.i},${b.j})`);
   }
+
+  buildTreeFills(g, col); // after blocks so tree scatter avoids the buildings
 
   //buildClouds(g);
   curbsideParking();
