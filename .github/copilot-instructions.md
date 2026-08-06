@@ -5,6 +5,13 @@ built with **Vite** and **three.js** (`import * as THREE from 'three'`). There i
 no framework, router, or test suite — it is a single ES-module bundle mounted in
 `index.html` (`<script type="module" src="/src/main.js">`).
 
+> **`CLAUDE.md` in the repo root is the authoritative, up-to-date guide.** `src/`
+> is grouped into `core/` (engine: `geo`, `merge`, `collision`, `curve`, `util`,
+> `palette`, `minimap`), `world/` (static world: `layout`, `coast-data`, `island`,
+> `parkway`, `paths`, `city`, `balls`) with `world/blocks/` (per-cell builders) and
+> `world/landmarks/` (one-off set pieces), `actors/` (`player`, `traffic`, `peds`,
+> `character`), and `fx/`. Paths below may lag; prefer `CLAUDE.md`.
+
 ## Commands
 
 - `npm install` — install dependencies.

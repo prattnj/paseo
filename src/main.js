@@ -1,21 +1,24 @@
 import * as THREE from 'three';
-import { buildCity } from './city.js';
-import { buildIsland, groundHeight, nearestBeach } from './island.js';
-import { Colliders } from './collision.js';
-import { Player } from './player.js';
-import { Traffic } from './traffic.js';
-import { Pedestrians } from './peds.js';
-import { Balls, BALL_SPAWNS } from './balls.js';
-import { Lighthouse } from './lighthouse.js';
-import { buildForest } from './forest.js';
-import { Smoke } from './factory.js';
-import { Minimap } from './minimap.js';
-import { Speakers } from './speakers.js';
+import { buildCity } from './world/city.js';
+import { buildIsland, groundHeight, nearestBeach } from './world/island.js';
+import { Colliders } from './core/collision.js';
+import { Player } from './actors/player.js';
+import { Traffic } from './actors/traffic.js';
+import { Pedestrians } from './actors/peds.js';
+import { Balls, BALL_SPAWNS } from './world/balls.js';
+import { Lighthouse } from './world/landmarks/lighthouse.js';
+import { PooManHero } from './fx/poo-man-hero.js';
+import { buildForest } from './world/landmarks/forest.js';
+import { Smoke } from './world/landmarks/factory.js';
+import { Minimap } from './core/minimap.js';
+import { Speakers } from './fx/speakers.js';
+import { updateStore, storeHint } from './world/landmarks/store.js';
+import { mergeStatic } from './core/merge.js';
 
 const app = document.getElementById('app');
 const overlay = document.getElementById('overlay');
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
@@ -57,16 +60,27 @@ buildIsland(scene, colliders);
 buildCity(scene, colliders);
 buildForest(scene, colliders);
 
+// Collapse the static world's ~1600 loose landmark/terrain meshes into a few
+// merged meshes per material — must run here, after every static builder and
+// before any actor or animated object is added to the scene.
+mergeStatic(scene);
+
 const lighthouse = new Lighthouse(scene, colliders);
+const pooManHero = new PooManHero(scene); // the town hero flying his sky patrol
 const smoke = new Smoke(scene);
+
+// The minimap is a one-time top-down render of the finished static world, so
+// take it here — before the actors are added — to keep cars/peds off the map.
+const minimap = new Minimap(document.getElementById('minimap'), renderer, scene);
+sun.shadow.needsUpdate = true; // the map render consumed the pending shadow pass; redo it for the title frame
+
 const traffic = new Traffic(scene, colliders);
 const player = new Player(scene, camera, colliders, traffic);
 const peds = new Pedestrians(scene, colliders);
 const balls = new Balls(scene, colliders);
 for (const s of BALL_SPAWNS) balls.add(s.x, s.z);
-const minimap = new Minimap(document.getElementById('minimap'), colliders);
 player.settleCamera(); // frame the spawn view for the title screen (before pointer lock)
-window.__game = { player, traffic, peds, groundHeight, nearestBeach }; // debug/testing hook
+window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera }; // debug/testing hook
 
 // ---- background music ----
 const bgm = document.getElementById('bgm');
@@ -79,13 +93,28 @@ const speakers = new Speakers(scene, listener);
 
 // ---- pointer lock ----
 let locked = false;
+let relockTimer = 0;
+// After ESC exits the lock, the browser rejects requestPointerLock() for ~1s
+// ("Pointer lock cannot be acquired immediately after the user has exited the
+// lock"). Swallow that rejection and keep retrying until the cooldown passes so
+// the click still takes effect instead of silently failing.
+function acquireLock() {
+  clearTimeout(relockTimer);
+  const p = renderer.domElement.requestPointerLock();
+  if (p && typeof p.catch === 'function') {
+    p.catch(() => {
+      if (!locked) relockTimer = setTimeout(acquireLock, 150);
+    });
+  }
+}
 overlay.addEventListener('click', () => {
-  renderer.domElement.requestPointerLock();
+  acquireLock();
   if (bgm.paused) bgm.play().catch(() => {});
   speakers.play();
 });
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
+  if (locked) clearTimeout(relockTimer);
   overlay.classList.toggle('hidden', locked);
   // ESC unlocks the pointer → treat it as a full pause: silence all music (the
   // world/actors are frozen in the loop below). Clicking to re-lock resumes.
@@ -139,10 +168,12 @@ function tick() {
   // is no dt spike on resume.
   if (locked) {
     player.update(dt);
+    updateStore(player, dt); // Hansen's doorway hint + fade-and-teleport
     traffic.update(dt, player);
     peds.update(dt, traffic, player);
     balls.update(dt, player, traffic);
     lighthouse.update(dt);
+    pooManHero.update(dt);
     speakers.update(dt, player, bgm);
 
     // Refresh the (manually driven) shadow map every 3rd active frame. Static
@@ -154,7 +185,7 @@ function tick() {
   // near-car HUD hint
   const hint = document.getElementById('hint');
   if (hint) {
-    const text = player.car ? 'E — get out' : player.nearCar ? 'E — drive' : '';
+    const text = player.car ? 'E — get out' : player.nearCar ? 'E — drive' : storeHint();
     if (hint.textContent !== text) hint.textContent = text;
     hint.style.display = text ? 'block' : 'none';
   }
