@@ -20,6 +20,7 @@ import { key } from './core/keycap.js';
 import { mergeStatic } from './core/merge.js';
 import { initWardrobe, wardrobeOpen } from './core/wardrobe.js';
 import { Coins } from './core/coins.js';
+import { Levels } from './core/levels.js';
 import { Unlocks } from './core/unlocks.js';
 
 const app = document.getElementById('app');
@@ -143,7 +144,7 @@ let storeWasIn = false;  // edge-detect entering the store, to restart the song
 // before tick() starts, and every handler only fires after the player has
 // clicked Play — i.e. long after boot() has finished.
 let lighthouse, pooManHero, smoke, minimap, traffic, player, peds, balls;
-let coins, unlocks, listener, speakers, fountains;
+let coins, levels, unlocks, listener, speakers, fountains;
 let started = false; // flips true the first time the player clicks Play
 
 // ---- pointer lock ----
@@ -195,6 +196,7 @@ document.addEventListener('pointerlockchange', () => {
     bgm.pause();
     storeBgm.pause();
     speakers.pause();
+    if (levels) levels.refresh(); // sync the pause panel (coins may have changed)
   }
 });
 document.addEventListener('mousemove', (e) => {
@@ -363,10 +365,13 @@ async function boot() {
   applyPanorama();        // frame the title screen with the static city vista
   updateSunShadow();      // centre the shadow window on the panorama view before its render
 
-  // coins / unlocks (both persisted in localStorage). The player needs them to
-  // run the buy-prompt when you press E on a locked vehicle. All coin AMOUNTS
-  // live in economy.js.
+  // coins / XP+levels / unlocks (all persisted in localStorage). The player
+  // needs coins/unlocks to run the buy-prompt when you press E on a locked
+  // vehicle. Leveling up pays coins. All coin/XP AMOUNTS live in economy.js.
+  // Levels is built after Coins (it relocates the coin pill into a shared HUD
+  // cluster).
   coins = new Coins();
+  levels = new Levels(coins);
   unlocks = new Unlocks();
   player.coins = coins;
   player.unlocks = unlocks;
@@ -376,7 +381,7 @@ async function boot() {
   camera.add(listener);
   speakers = new Speakers(scene, listener);
 
-  window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, coins, unlocks, applyPanorama }; // debug/testing hook
+  window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, coins, levels, unlocks, applyPanorama }; // debug/testing hook
   await raf();
 
   setProgress(100, 'Ready');
