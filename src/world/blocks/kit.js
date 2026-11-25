@@ -94,14 +94,34 @@ function groundStripe(g, cx, cz, sx, sz, hex, ry = 0, h = 0.05) {
 const SCORE_Y = SIDEWALK_H + 0.031; // just above concrete top (0.03), below lots
 
 // An expansion-joint grid: darker lines every ~`spacing` m in both axes, so the
-// slab reads as scored panels rather than one sheet.
-function concreteScoring(g, r, spacing = 12, hex = P.concreteDark, lineW = 0.16) {
+// slab reads as scored panels rather than one sheet. `y` defaults to just above
+// the block's concrete top, but a raised floor (e.g. the mosque plinth) can pass
+// its own surface height.
+function concreteScoring(g, r, spacing = 12, hex = P.concreteDark, lineW = 0.16, y = SCORE_Y) {
   const w = r.x1 - r.x0, d = r.z1 - r.z0;
   const mx = (r.x0 + r.x1) / 2, mz = (r.z0 + r.z1) / 2;
   const nx = Math.max(1, Math.round(w / spacing));
-  for (let i = 1; i < nx; i++) g.boxB(r.x0 + (w * i) / nx, SCORE_Y, mz, lineW, 0.006, d, hex, 0, false);
+  for (let i = 1; i < nx; i++) g.boxB(r.x0 + (w * i) / nx, y, mz, lineW, 0.006, d, hex, 0, false);
   const nz = Math.max(1, Math.round(d / spacing));
-  for (let j = 1; j < nz; j++) g.boxB(mx, SCORE_Y, r.z0 + (d * j) / nz, w, 0.006, lineW, hex, 0, false);
+  for (let j = 1; j < nz; j++) g.boxB(mx, y, r.z0 + (d * j) / nz, w, 0.006, lineW, hex, 0, false);
+}
+
+// Faint horizontal "coursing" lines up a vertical wall face — a lighter texture
+// than the floor grid (horizontal only, no cross-hatch) so a wall reads as
+// coursed stone/masonry without matching the pavement. Give the face-centre
+// (fx,fz) at the wall base `baseY`, the wall's run axis ('x'|'z') and run length,
+// the wall height H, and the outward face-normal sign (±1) along the
+// perpendicular axis. Lines are thin non-casting decals pushed `proud` clear of
+// the face so they never z-fight the wall.
+function wallScoring(g, fx, baseY, fz, runAxis, runLen, H, faceSign, opts = {}) {
+  const { rows = 4, hex = P.concreteDark, lineW = 0.1, margin = 0.8, proud = 0.05 } = opts;
+  const L = runLen - margin * 2;
+  if (L <= 0) return;
+  for (let i = 1; i <= rows; i++) {
+    const wy = baseY + (H * i) / (rows + 1);
+    if (runAxis === 'x') g.box(fx, wy, fz + faceSign * proud, L, lineW, 0.04, hex, 0, false);
+    else g.box(fx + faceSign * proud, wy, fz, 0.04, lineW, L, hex, 0, false);
+  }
 }
 
 // A painted safety-boundary line: a hollow rectangle inset `inset` m from the
@@ -152,7 +172,7 @@ const TUN_FLOOR = SIDEWALK_H + 0.04;  // tunnel floor + the apron aprons it exte
 // A large asphalt parking lot centred at world (cx, cz), size uw x vd in the
 // lot's own frame (rotated by ry). Several rows of painted spaces stacked with
 // drive aisles, plus a capped number of parked cars. `gy` = the block surface.
-function parkingLotAt(g, col, cx, cz, uw, vd, gy, s, ry = 0, carType = null, maxCars = 30, surface = ASPHALT, lineHex = LOT_LINE) {
+function parkingLotAt(g, col, cx, cz, uw, vd, gy, s, ry = 0, carType = null, maxCars = 30, surface = ASPHALT, lineHex = LOT_LINE, skip = null) {
   const c = Math.cos(ry), sn = Math.sin(ry);
   const box = (u, v, w2, d2, by, hex) => g.boxB(cx + u * c - v * sn, by, cz + u * sn + v * c, w2, 0.02, d2, hex, ry);
   box(0, 0, uw, vd, gy + 0.02, surface);
@@ -167,7 +187,9 @@ function parkingLotAt(g, col, cx, cz, uw, vd, gy, s, ry = 0, carType = null, max
     for (let k = 0; k < nsp; k++) {
       if (cars >= maxCars || hash(s, ri * 37 + k, 5) % 3 === 0) continue;
       const u = u1 + (k + 0.5) * spaceW;
-      parkedCar(g, col, cx + u * c - vr * sn, cz + u * sn + vr * c, ry + (ri % 2 ? Math.PI : 0), hash(s, ri * 37 + k, 9), gy + 0.01, carType);
+      const px = cx + u * c - vr * sn, pz = cz + u * sn + vr * c;
+      if (skip && skip(px, pz)) continue;   // leave chosen spots empty (e.g. by the door)
+      parkedCar(g, col, px, pz, ry + (ri % 2 ? Math.PI : 0), hash(s, ri * 37 + k, 9), gy + 0.01, carType);
       cars++;
     }
   }
@@ -265,5 +287,5 @@ function ironFence(g, col, x0, z0, x1, z1, baseY = SIDEWALK_H, scale = 1) {
 
 export { slabAndSidewalk, groundStripe, grassMottle, cornerLamps, streetTrees,
   parkingLotAt, lotGrid, wallSign, makeTextTexture, ironFence,
-  concreteScoring, concreteBorder,
+  concreteScoring, concreteBorder, wallScoring,
   LOT_DECK, LOT_CONCRETE, LOT_LINE_Y, TUN_FLOOR };
