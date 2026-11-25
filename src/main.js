@@ -38,21 +38,65 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff3dc, 1.9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
-sun.shadow.camera.near = 50;
-sun.shadow.camera.far = 2600;
-const S = 1050; // half-size: covers the ±885 grid + beaches from the sun's tilt
-sun.shadow.camera.left = -S;
-sun.shadow.camera.right = S;
-sun.shadow.camera.top = S;
-sun.shadow.camera.bottom = -S;
-sun.shadow.bias = -0.0005;
-sun.shadow.normalBias = 1.0; // larger frustum/texel needs a normal offset vs acne
-// The sun is fixed and the whole static city casts into a 4096² map — re-rendering
-// that every frame is the scene's single biggest cost. Only actors move, so we drive
-// the shadow map manually (see the loop) and refresh it every few frames instead.
+// Rather than one shadow map stretched over the whole 2100m island (~0.5m/texel,
+// which turns thin posts into jagged blocks), the map covers a small window that
+// FOLLOWS the camera — effectively a single tight cascade. Same map, same light,
+// same cost, but ~0.15m/texel where you actually are, so near shadows are crisp.
+// Distant buildings fall outside the window and go shadowless, but they're fog-
+// hazed and looked bad at 0.5m anyway. Tune SHADOW_R (crispness vs coverage) and
+// SHADOW_AHEAD (how far ahead of the camera the window sits) to taste.
+const SHADOW_R = 300;         // half-size of the follow window (m) → 600/4096 ≈ 0.146m/texel
+const SHADOW_AHEAD = 180;     // push the window ahead of the camera so the foreground is covered
+const SUN_DIST = 1300;        // how far up-sun the light sits from the window centre
+const SHADOW_EVERY = 2;       // refresh the shadow map every Nth active frame. 1 = fully smooth
+                              // moving shadows (max cost), higher = cheaper but steppier movers.
+sun.shadow.camera.left = -SHADOW_R;
+sun.shadow.camera.right = SHADOW_R;
+sun.shadow.camera.top = SHADOW_R;
+sun.shadow.camera.bottom = -SHADOW_R;
+// Depth range bracketing SUN_DIST ± (window + tall towers + hills). Tighter than the
+// old 50..2600 because the window is small now, which sharpens depth precision.
+sun.shadow.camera.near = 800;
+sun.shadow.camera.far = 1800;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.6;
+sun.shadow.radius = 3; // soften the PCF edge a touch
+// Only actors move (and now the window follows the camera), so we drive the shadow
+// map manually and refresh it every few frames (see the loop) — never every frame.
 sun.shadow.autoUpdate = false;
 sun.shadow.needsUpdate = true; // render it once for the title-screen frame
 scene.add(sun, sun.target);
+
+// Fixed sun DIRECTION (only the position slides with the window); the light always
+// shines down this vector so shadows keep a consistent angle across the city.
+const SUN_DIR = new THREE.Vector3(0.45, 1, 0.35).normalize();
+
+// Re-centre the shadow window on a ground point ahead of the camera, snapped to the
+// shadow-map texel grid so the shadow edges don't crawl/shimmer as the window slides.
+// (Snap in light space — the two axes perpendicular to SUN_DIR are the map's plane.)
+const _lightOrient = new THREE.Matrix4().lookAt(
+  new THREE.Vector3(), SUN_DIR.clone().negate(), new THREE.Vector3(0, 1, 0));
+const _lightOrientInv = _lightOrient.clone().invert();
+const _shadowCentre = new THREE.Vector3();
+const _camFwd = new THREE.Vector3();
+function updateSunShadow() {
+  camera.getWorldDirection(_camFwd);
+  _camFwd.y = 0;
+  if (_camFwd.lengthSq() < 1e-6) _camFwd.set(0, 0, -1); else _camFwd.normalize();
+  _shadowCentre.set(
+    camera.position.x + _camFwd.x * SHADOW_AHEAD, 0,
+    camera.position.z + _camFwd.z * SHADOW_AHEAD);
+  const texel = (2 * SHADOW_R) / sun.shadow.mapSize.x;
+  _shadowCentre.applyMatrix4(_lightOrientInv);
+  _shadowCentre.x = Math.floor(_shadowCentre.x / texel) * texel;
+  _shadowCentre.y = Math.floor(_shadowCentre.y / texel) * texel;
+  _shadowCentre.applyMatrix4(_lightOrient);
+  sun.target.position.copy(_shadowCentre);
+  sun.position.copy(_shadowCentre).addScaledVector(SUN_DIR, SUN_DIST);
+  sun.updateMatrixWorld(true);
+  sun.target.updateMatrixWorld(true);
+}
+sun.shadow.camera.updateProjectionMatrix();
 
 // ---- world ----
 const colliders = new Colliders();
@@ -80,6 +124,7 @@ const peds = new Pedestrians(scene, colliders);
 const balls = new Balls(scene, colliders);
 for (const s of BALL_SPAWNS) balls.add(s.x, s.z);
 player.settleCamera(); // frame the spawn view for the title screen (before pointer lock)
+updateSunShadow();     // centre the shadow window on the title view before its render
 window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera }; // debug/testing hook
 
 // ---- background music ----
@@ -135,15 +180,6 @@ window.addEventListener('resize', () => {
 
 // ---- loop ----
 const clock = new THREE.Clock();
-const SUN_DIR = new THREE.Vector3(0.45, 1, 0.35).normalize();
-
-// Fixed sun over the island centre — the shadow frustum is large enough to
-// cover everything, so it never needs to move.
-sun.position.copy(SUN_DIR).multiplyScalar(1300);
-sun.target.position.set(0, 0, 0);
-sun.target.updateMatrixWorld();
-sun.shadow.camera.updateProjectionMatrix();
-
 const fpsEl = document.getElementById('fps');
 let fpsAccum = 0; // smoothed frame time (s), EMA
 let fpsSince = 0; // time since last readout refresh
@@ -176,10 +212,11 @@ function tick() {
     pooManHero.update(dt);
     speakers.update(dt, player, bgm);
 
-    // Refresh the (manually driven) shadow map every 3rd active frame. Static
-    // casters never change; this only re-captures moving actors, and 20fps
-    // shadow updates on cars/peds are imperceptible. Paused → skip entirely.
-    if (shadowTick++ % 3 === 0) sun.shadow.needsUpdate = true;
+    // Refresh the (manually driven) shadow map every SHADOW_EVERY active frames:
+    // re-centre the follow window on the current view, then re-capture (static
+    // casters + moving actors). Higher-frequency refreshes make cars/peds/the
+    // player's own shadow track more smoothly. Paused → skip entirely.
+    if (shadowTick++ % SHADOW_EVERY === 0) { updateSunShadow(); sun.shadow.needsUpdate = true; }
   }
 
   // near-car HUD hint
