@@ -14,7 +14,7 @@ import { Minimap } from './core/minimap.js';
 import { Speakers } from './fx/speakers.js';
 import { Fountains } from './fx/fountains.js';
 import { FOUNTAINS } from './world/blocks/index.js';
-import { updateStore, storeHint } from './world/landmarks/store.js';
+import { updateStore, storeHint, inStore } from './world/landmarks/store.js';
 import { key } from './core/keycap.js';
 import { mergeStatic } from './core/merge.js';
 
@@ -119,7 +119,19 @@ function applyPanorama() {
 
 // ---- background music (DOM element — cheap to grab up front) ----
 const bgm = document.getElementById('bgm');
-bgm.volume = 0.35;
+const BGM_VOL = 0.35;    // city bgm's full volume
+bgm.volume = BGM_VOL;
+
+// Hansen's store song: swaps in for the city bgm while you're inside the
+// grocery. `storeMix` eases 0→1 as you enter (and back), and the crossfade in
+// tick() (run after speakers.update so it composes with the memorial duck)
+// applies it. Restarted from the top on each entry — see the tick block.
+const storeBgm = document.getElementById('store-bgm');
+const STORE_VOL = 0.5;   // Hansen's song's full volume
+const STORE_FADE = 0.6;  // crossfade time-constant (s)
+storeBgm.volume = 0;
+let storeMix = 0;        // 0 = city bgm, 1 = Hansen's song
+let storeWasIn = false;  // edge-detect entering the store, to restart the song
 
 // World / actor objects are created asynchronously in boot() below (so the
 // loading screen can animate between build phases); declared here so the event
@@ -174,6 +186,7 @@ document.addEventListener('pointerlockchange', () => {
   if (!locked) {
     playBtn.textContent = 'Resume';
     bgm.pause();
+    storeBgm.pause();
     speakers.pause();
   }
 });
@@ -221,7 +234,24 @@ function tick() {
     lighthouse.update(dt);
     pooManHero.update(dt);
     fountains.update(dt); // fountain spray arcs
-    speakers.update(dt, player, bgm);
+    const memorialDuck = speakers.update(dt, player); // 1 = full bgm, 0 = at the memorial
+
+    // Hansen's store music: crossfade the city bgm out and the store song in
+    // while inside the grocery. Runs after speakers.update so it composes with
+    // (and overrides) the memorial duck. The song restarts from the top on each
+    // entry, and pauses once it's fully faded back out.
+    const wantStore = inStore();
+    if (wantStore && !storeWasIn) { storeBgm.currentTime = 0; storeBgm.play().catch(() => {}); }
+    storeWasIn = wantStore;
+    storeMix += ((wantStore ? 1 : 0) - storeMix) * Math.min(1, dt / STORE_FADE);
+    if (storeMix < 0.001) { storeMix = 0; if (!wantStore && !storeBgm.paused) storeBgm.pause(); }
+    if (wantStore && storeBgm.paused) storeBgm.play().catch(() => {}); // resume after an ESC pause
+    // ONE write per element per frame — never write an intermediate value and
+    // then scale it (the audio thread can catch the intermediate → audible blip).
+    const bgmVol = BGM_VOL * memorialDuck * (1 - storeMix);
+    if (bgm.volume !== bgmVol) bgm.volume = bgmVol;
+    const storeVol = STORE_VOL * storeMix;
+    if (storeBgm.volume !== storeVol) storeBgm.volume = storeVol;
 
     // Refresh the (manually driven) shadow map every SHADOW_EVERY active frames:
     // re-centre the follow window on the current view, then re-capture (static

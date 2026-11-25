@@ -139,7 +139,11 @@ export class Speakers {
     if (this.sound && this.sound.isPlaying) this.sound.pause();
   }
 
-  update(dt, player, bgm) {
+  // Returns the city-bgm duck factor (1 = full, 0 = silenced at the memorial).
+  // The caller folds it into a single bgm.volume write: writing the element's
+  // volume more than once per frame with different values lets the audio thread
+  // occasionally sample the intermediate one, which is heard as a short blip.
+  update(dt, player) {
     // --- beat: bass-band energy of the live signal, fast attack / slow decay ---
     let target = 0;
     if (this.analyser && this.sound.isPlaying) {
@@ -170,10 +174,8 @@ export class Speakers {
     }
 
     // --- duck the city's background music while the player is at the memorial ---
-    if (bgm) {
-      const d = Math.hypot(player.pos.x - MX, player.pos.z - MZ);
-      const near = THREE.MathUtils.clamp((130 - d) / (130 - 70), 0, 1);
-      bgm.volume = 0.35 * (1 - near);
-    }
+    const d = Math.hypot(player.pos.x - MX, player.pos.z - MZ);
+    const near = THREE.MathUtils.clamp((130 - d) / (130 - 70), 0, 1);
+    return 1 - near;
   }
 }

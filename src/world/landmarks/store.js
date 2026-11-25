@@ -59,6 +59,7 @@ let EXT_SPAWN = null, INT_SPAWN = null; // { x, y, z, yaw }
 let trans = null;                // in-progress fade: { spawn, t, teleported }
 let ePrev = false;               // KeyE edge detection
 let curHint = '';                // current doorway hint text (read by main.js)
+let inside = false;              // true while the player is in the interior room (read by main.js for the store's music)
 
 // ===========================================================================
 // EXTERIOR — the block builder (dispatched from city.js CITY map)
@@ -444,6 +445,11 @@ function near(p, door) { const dx = p.x - door.x, dz = p.z - door.z; return dx *
 // none) — read by the main-loop HUD code, which assigns it via innerHTML.
 export function storeHint() { return curHint; }
 
+// True while the player stands inside the interior room — read by main.js to
+// crossfade the city bgm out and Hansen's store song in. Flips exactly at the
+// full-black teleport, so the music swaps on the visual cut.
+export function inStore() { return inside; }
+
 export function updateStore(player, dt) {
   if (!EXT_DOOR) return; // grocery not built yet
 
@@ -456,6 +462,7 @@ export function updateStore(player, dt) {
     if (trans.t <= 0) {
       if (!trans.teleported) {
         player.teleport(trans.spawn);   // swap sides at full black
+        inside = trans.spawn === INT_SPAWN; // the music crossfade keys off this, so it swaps exactly at the visual cut
         trans.teleported = true;
         trans.t = FADE_S;
         fadeEl().style.opacity = '0';   // CSS eases us back in
