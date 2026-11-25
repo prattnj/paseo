@@ -5,7 +5,7 @@ import { Colliders } from './core/collision.js';
 import { Player } from './actors/player.js';
 import { Traffic } from './actors/traffic.js';
 import { Pedestrians } from './actors/peds.js';
-import { Balls, BALL_SPAWNS } from './world/balls.js';
+import { Balls, BALL_SPAWNS, BALL_ZONES } from './world/balls.js';
 import { Lighthouse } from './world/landmarks/lighthouse.js';
 import { PooManHero } from './fx/poo-man-hero.js';
 import { buildForest } from './world/landmarks/forest.js';
@@ -22,6 +22,7 @@ import { initWardrobe, wardrobeOpen } from './core/wardrobe.js';
 import { Coins } from './core/coins.js';
 import { Levels } from './core/levels.js';
 import { Unlocks } from './core/unlocks.js';
+import { Achievements } from './core/achievements.js';
 
 const app = document.getElementById('app');
 const overlay = document.getElementById('overlay');
@@ -144,7 +145,7 @@ let storeWasIn = false;  // edge-detect entering the store, to restart the song
 // before tick() starts, and every handler only fires after the player has
 // clicked Play — i.e. long after boot() has finished.
 let lighthouse, pooManHero, smoke, minimap, traffic, player, peds, balls;
-let coins, levels, unlocks, listener, speakers, fountains;
+let coins, levels, unlocks, achievements, listener, speakers, fountains;
 let started = false; // flips true the first time the player clicks Play
 
 // ---- pointer lock ----
@@ -164,7 +165,7 @@ function acquireLock() {
   }
 }
 // Only the Play button enters the world (not a click anywhere on the overlay),
-// so the pause screen's panels are freely clickable without launching.
+// so the pause screen's achievements list is freely clickable without launching.
 const playBtn = document.getElementById('playBtn');
 playBtn.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -264,6 +265,8 @@ function tick() {
     if (bgm.volume !== bgmVol) bgm.volume = bgmVol;
     const storeVol = STORE_VOL * storeMix;
     if (storeBgm.volume !== storeVol) storeBgm.volume = storeVol;
+
+    achievements.update(dt, player); // track stats, grant rewards, pop toasts
 
     // Refresh the (manually driven) shadow map every SHADOW_EVERY active frames:
     // re-centre the follow window on the current view, then re-capture (static
@@ -365,23 +368,27 @@ async function boot() {
   applyPanorama();        // frame the title screen with the static city vista
   updateSunShadow();      // centre the shadow window on the panorama view before its render
 
-  // coins / XP+levels / unlocks (all persisted in localStorage). The player
-  // needs coins/unlocks to run the buy-prompt when you press E on a locked
-  // vehicle. Leveling up pays coins. All coin/XP AMOUNTS live in economy.js.
-  // Levels is built after Coins (it relocates the coin pill into a shared HUD
-  // cluster).
+  // coins / XP+levels / unlocks / achievements (all persisted in localStorage).
+  // The player needs coins/unlocks to run the buy-prompt when you press E on a
+  // locked vehicle. Achievements pay XP into the level meter, which pays coins on
+  // level-up. All coin/XP AMOUNTS live in economy.js. Levels is built after Coins
+  // (it relocates the coin pill into a shared HUD cluster) and before Achievements
+  // (so its pause-menu panel sits above the achievement list).
   coins = new Coins();
   levels = new Levels(coins);
   unlocks = new Unlocks();
   player.coins = coins;
   player.unlocks = unlocks;
+  // hand the achievement engine the live world it needs for location/event
+  // checks: pedestrians (tank hits), the balls + their goal/field target zones.
+  achievements = new Achievements(levels, coins, unlocks, { peds, balls, zones: BALL_ZONES });
 
   // Poo Man memorial speakers (positional music that ducks the bgm).
   listener = new THREE.AudioListener();
   camera.add(listener);
   speakers = new Speakers(scene, listener);
 
-  window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, coins, levels, unlocks, applyPanorama }; // debug/testing hook
+  window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, coins, levels, unlocks, achievements, applyPanorama }; // debug/testing hook
   await raf();
 
   setProgress(100, 'Ready');

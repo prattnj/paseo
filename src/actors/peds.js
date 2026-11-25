@@ -659,7 +659,11 @@ export class Pedestrians {
       g.rotation.y = Math.atan2(-nx, -nz); // face the car that hit them
       animateWalk(p.h, 0, 0);
       // the impact costs the driver a little speed
-      if (c.mode === 'driven' && player) player.driveSpeed *= 0.96;
+      if (c.mode === 'driven' && player) {
+        player.driveSpeed *= 0.96;
+        // achievement: mow one down in the tank
+        if (c.type === 'tank') player.evt.tankHits++;
+      }
       return;
     }
   }

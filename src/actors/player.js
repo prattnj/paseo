@@ -62,6 +62,12 @@ export class Player {
     this._buyConfirm = false;
     this._buyCancel = false;
     this._buyEl = null;
+
+    // Achievement event counters (read by achievements.js). Bumped at the
+    // existing drown / airborne / flip sites below; tankHits is bumped from
+    // peds.js when the tank being driven launches a pedestrian.
+    this.evt = { drowns: 0, flips: 0, airborne: 0, tankHits: 0 };
+    this.inMud = false; // true while walking through the construction-site mud
     this._moveCtx = null;            // last movePlayer result (support tracking)
     this._groundAnchor = this.pos.y; // last grounded height (anti-cliff-hop)
     this._drownT = 0;                // fade-out countdown after going under
@@ -163,12 +169,14 @@ export class Player {
       }
     } else if (this.pos.y < WATER_Y - 1.35) {
       this._drownT = 0.5;
+      this.evt.drowns++;
       const f = this._fade();
       if (f) f.style.opacity = '1';
     } else if (inReservoir(this.pos.x, this.pos.y, this.pos.z)) {
       // drowned in the reservoir: respawn onto the berm (outside the fence)
       this._drownT = 0.5;
       this._resDrown = true;
+      this.evt.drowns++;
       const f = this._fade();
       if (f) f.style.opacity = '1';
     }
@@ -242,7 +250,9 @@ export class Player {
 
     const sprinting = k.has('ShiftLeft') || k.has('ShiftRight');
     // mud pits on the construction site drag the player down to ~72% speed
-    const speed = (sprinting ? SPRINT : WALK) * mudFactor(this.pos.x, this.pos.z);
+    const mud = mudFactor(this.pos.x, this.pos.z);
+    this.inMud = mud < 0.999; // achievement flag: on foot in the mud
+    const speed = (sprinting ? SPRINT : WALK) * mud;
 
     // camera-relative movement
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
@@ -481,6 +491,7 @@ export class Player {
     const k = this.keys;
     const c = this.car;
     const spec = c.spec;
+    this.inMud = false; // driving, not walking — the mud achievement is on foot
     // mud pits (construction site) sap grip: lower top speed & acceleration
     const surf = mudFactor(c.mesh.position.x, c.mesh.position.z);
 
@@ -639,6 +650,7 @@ export class Player {
         v *= 0.5;
         if (this.traffic.landCar(c) === 'flipped') {
           // landed on the roof: the drive is over, climb out beside it
+          this.evt.flips++;
           this.driveSpeed = 0;
           this.exitCar();
           return;
@@ -647,6 +659,7 @@ export class Player {
     } else if (groundY < c.y - 0.7) {
       // drove off an edge: go airborne, tumble faster the faster we were going
       c.air = { vy: 0, pitchV: -(0.5 + 0.06 * Math.abs(v)) };
+      this.evt.airborne++;
     } else {
       c.y += (groundY - c.y) * Math.min(1, 12 * dt);
       if (c.pitch) { // settle back onto the wheels after a landing

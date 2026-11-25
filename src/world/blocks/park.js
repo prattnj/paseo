@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { PALETTE as P, SIDEWALK_H } from '../../core/palette.js';
 import { hash, frac } from '../../core/util.js';
 import { ribbon } from '../../core/curve.js';
-import { BALL_SPAWNS } from '../balls.js';
+import { BALL_SPAWNS, BALL_ZONES } from '../balls.js';
 import { tree, bench, flowerBed, scatterTrees } from './props.js';
 import { slabAndSidewalk, groundStripe, cornerLamps, wallSign } from './kit.js';
 
@@ -66,6 +66,13 @@ function buildPark(g, col, b, seed, scene = null) {
 
   soccerField(g, col, fieldCx, r.cz, w * 0.42, d - 22);
   BALL_SPAWNS.push({ x: fieldCx, z: r.cz }); // pushable ball at the centre spot
+
+  // register the two goal mouths for the "score at both pitches" achievement:
+  // a shallow box just behind each goal line, spanning the post gap (cx ± 3.3).
+  // Grouped by cell id so the engine can tell the two pitches apart.
+  const gfd = d - 22, gz0 = r.cz - gfd / 2, gz1 = r.cz + gfd / 2, id = `${b.i},${b.j}`;
+  BALL_ZONES.push({ type: 'goal', field: id, x0: fieldCx - 3.6, x1: fieldCx + 3.6, z0: gz0 - 2.6, z1: gz0 + 0.6 });
+  BALL_ZONES.push({ type: 'goal', field: id, x0: fieldCx - 3.6, x1: fieldCx + 3.6, z0: gz1 - 0.6, z1: gz1 + 2.6 });
 
   // path down the dividing line (connects the two street edges); a hair taller
   // so it cleanly covers the wooded path where it tees off.

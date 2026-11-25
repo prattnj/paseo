@@ -15,6 +15,7 @@ import { PALETTE as P } from '../../core/palette.js';
 import { TOP_Y, onLand } from '../island.js';
 import { parkwaySegments } from '../parkway.js';
 import { parkingLotAt, lamp, tree, scatterTrees, ironFence } from '../blocks/index.js';
+import { BALL_ZONES } from '../balls.js';
 
 // ---- placement ----------------------------------------------------------
 const AX = -445, AZ = -835;      // arena centre, comfortably inside the parkway
@@ -457,4 +458,8 @@ export function buildArena(g, col, scene) {
   gateArch(g, col);
   surrounds(g, col);
   groundsForest(g, col); // last: avoids every collider placed above
+
+  // the playing surface, as an achievement target: shove a soccer ball in here
+  // from a neighbouring pitch and it counts as "onto the football field".
+  BALL_ZONES.push({ type: 'field', tag: 'football', x0: FX0, x1: FX1, z0: FZ0, z1: FZ1 });
 }

@@ -8,6 +8,14 @@ import * as THREE from 'three';
 // main.js after the world is built.
 export const BALL_SPAWNS = [];
 
+// Ball-target zones for achievements: axis-aligned {x0,x1,z0,z1} rectangles a
+// ball can be shoved into. Filled by the world builders (goals by buildPark, the
+// football field by buildArena) and read by the achievement engine, which scans
+// every live ball against them each frame. Each entry is tagged:
+//   { type:'goal', field:'i,j', ... }  — a soccer goal mouth, grouped by pitch
+//   { type:'field', tag:'football', ... } — the arena gridiron
+export const BALL_ZONES = [];
+
 const BALL_R = 0.5;                 // ~1 m diameter
 const FIELD_TOP = 0.20;            // raised park-block surface height
 const MAX_SPEED = 128;              // clamp so a boosted car can't launch it absurdly
