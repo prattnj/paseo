@@ -4,11 +4,12 @@ import { PALETTE as P, SIDEWALK_H } from '../../core/palette.js';
 import { hash } from '../../core/util.js';
 import { bigBuilding } from './pieces.js';
 import { fountain, tree, bench, flowerBed } from './props.js';
-import { slabAndSidewalk, parkingLotAt, wallSign, cornerLamps } from './kit.js';
+import { slabAndSidewalk, parkingLotAt, wallSign, cornerLamps, concreteScoring } from './kit.js';
 
 // sports field, a staff parking lot, and an entrance plaza with a flagpole.
 function buildSchool(g, col, b, seed, scene) {
   const r = slabAndSidewalk(g, col, b, P.concrete);
+  concreteScoring(g, r, 9);
   const gy = SIDEWALK_H + 0.2, y = SIDEWALK_H;
   const cx = r.cx, cz = r.cz, w = r.x1 - r.x0;
   // main classroom wing along the north edge, entrance facing the yard (+z)
@@ -29,7 +30,7 @@ function buildSchool(g, col, b, seed, scene) {
   // concrete monument sign against the building, beside the entrance, facing out
   wallSign(g, col, scene, cx - w * 0.22 - 8, gy, r.z0 + 28, 12, 'NOSH CITY SCHOOL DISTRICT', 1);
   // entrance plaza + flagpole + bike racks between the wing and the yard
-  g.boxB(cx, gy + 0.02, r.z0 + 33, w * 0.5, 0.02, 12, P.path);
+  g.boxB(cx, SIDEWALK_H + 0.04, r.z0 + 33, w * 0.5, 0.02, 12, P.path); // entrance pad, just above the slab
   g.cyl(cx - w * 0.2, gy, r.z0 + 33, 0.1, 0.14, 10, P.white, 6);
   g.box(cx - w * 0.2 + 1.3, gy + 8.6, r.z0 + 33, 2.4, 1.4, 0.08, 0xe04f43); // flag
   col.add(cx - w * 0.2, 0, r.z0 + 33, 0.4, 10, 0.4);

@@ -4,12 +4,13 @@ import { PALETTE as P, SIDEWALK_H } from '../../core/palette.js';
 import { hash } from '../../core/util.js';
 import { bigBuilding } from './pieces.js';
 import { parkedCar, tree, planter } from './props.js';
-import { slabAndSidewalk, parkingLotAt, wallSign, cornerLamps } from './kit.js';
+import { slabAndSidewalk, parkingLotAt, wallSign, cornerLamps, concreteScoring } from './kit.js';
 
 // Public-safety block: fire station + apparatus garage (with two driveable
 // fire trucks) on the left half, police station + cruiser lot on the right.
 function buildFireStation(g, col, b, seed, scene) {
   const r = slabAndSidewalk(g, col, b, P.concrete);
+  concreteScoring(g, r, 9);
   const gy = SIDEWALK_H + 0.2, y = SIDEWALK_H;
   const cx = r.cx, cz = r.cz;
   const RED = 0xd6362f, POLICE = 0x2b4a7a;
@@ -30,7 +31,7 @@ function buildFireStation(g, col, b, seed, scene) {
   g.boxB(lcx, y + gH - 2.0, front - 0.4, gW - 0.4, 2.0, 0.9, P.offwhite);    // header over the bays
   g.box(lcx, y + gH - 0.9, front + 0.1, gW - 1, 1.2, 0.2, RED);             // red fascia band
   g.boxB(lcx, y, front - 0.6, 1.6, gH - 2.0, 1.4, P.offwhite); col.add(lcx, 0, front - 0.6, 1.6, gH - 2.0, 1.4); // centre pillar
-  g.boxB(lcx, gy + 0.02, front + 3, gW, 0.02, 6, P.concreteDark);           // apron (kept inside the block)
+  g.boxB(lcx, SIDEWALK_H + 0.04, front + 3, gW, 0.02, 6, P.concreteDark);   // apron, just above the slab
   // the two driveable fire trucks, nosed toward the exit (+z)
   parkedCar(g, col, lcx - 10, gcz - 1, 0, hash(seed, 1), gy + 0.02, 'ladder');
   parkedCar(g, col, lcx + 10, gcz - 1, 0, hash(seed, 2), gy + 0.02, 'pumper');
