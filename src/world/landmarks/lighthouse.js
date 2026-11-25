@@ -40,6 +40,16 @@ const R_TOWER = 6.5;            // shaft base radius (cyl() tapers it ~0.76 -> ~
 const R_GALL = 6.9;             // gallery deck radius (overhangs the shaft top)
 const R_LANT = 3.7;             // lantern-room glass radius
 
+// Beam aim & sweep. The lamp only throws its light *seaward* (radially away
+// from the island centre) and rocks back and forth across that arc rather than
+// spinning a full circle. CENTER is the beam.rotation.y that points local +x
+// straight out to sea: local +x rotated by y maps to world (cos y, 0, -sin y),
+// which we set equal to the outward unit vector (LX,LZ) — i.e. atan2(-LZ, LX).
+const BEAM_CENTER = Math.atan2(-LZ, LX);
+const BEAM_SWEEP = 0.79;        // half-arc (~45°): a wide, dramatic sea sweep
+const BEAM_L = 220;             // beam reach (m)
+const BEAM_R = 24;              // cone mouth radius at full reach
+
 export class Lighthouse {
   constructor(scene, col) {
     const g = new GeoBatch();
@@ -109,35 +119,50 @@ export class Lighthouse {
     lamp.frustumCulled = false;
     scene.add(lamp);
 
-    // a rotating pivot carrying two opposite light fans. Each fan is an open
-    // cone whose apex sits at the lamp and whose mouth flares out ~150m —
-    // additive + translucent so it reads as a swept shaft of light, not solid.
+    // a pivot carrying a single light fan pointed seaward. The fan is an open
+    // cone whose apex sits at the lamp and whose mouth flares out to BEAM_R at
+    // BEAM_L — so it grows conically with distance. It's additive + translucent
+    // so it reads as a swept shaft of light, not solid, and its vertex colours
+    // fade from warm yellow at the lamp to black at the mouth: under additive
+    // blending black adds nothing, so the beam simply dissolves into the
+    // distance instead of ending in a hard edge.
     this.beam = new THREE.Group();
     this.beam.position.set(LX, LAMP_Y, LZ);
     scene.add(this.beam);
 
-    const geo = new THREE.ConeGeometry(9, 150, 20, 1, true);
-    geo.translate(0, 75, 0);          // apex at local origin, mouth along +y
-    geo.rotateZ(-Math.PI / 2);        // lay it horizontal, mouth along +x
+    const geo = new THREE.ConeGeometry(BEAM_R, BEAM_L, 24, 1, true);
+    geo.translate(0, -BEAM_L / 2, 0); // apex at local origin, wide base at -y
+    geo.rotateZ(Math.PI / 2);         // lay it horizontal: apex at lamp, mouth +x
+    const pos = geo.attributes.position;
+    const cols = new Float32Array(pos.count * 3);
+    const warm = new THREE.Color(0xffff1a);   // a strongly yellow beam
+    for (let i = 0; i < pos.count; i++) {
+      // fade lamp → mouth, squared so it eases to zero well before the mouth
+      // (a softer dissolve than a straight linear ramp, no sharp cut-off edge)
+      const f = (1 - Math.min(pos.getX(i) / BEAM_L, 1)) ** 2; // 1 at lamp → 0 out
+      cols[i * 3] = warm.r * f;
+      cols[i * 3 + 1] = warm.g * f;
+      cols[i * 3 + 2] = warm.b * f;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+
     const beamMat = new THREE.MeshBasicMaterial({
-      color: 0xfff3d0,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.09,
+      opacity: 0.16,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       toneMapped: false,
     });
-    for (const ry of [0, Math.PI]) {
-      const fan = new THREE.Mesh(geo, beamMat);
-      fan.rotation.y = ry;
-      fan.frustumCulled = false;
-      this.beam.add(fan);
-    }
+    const fan = new THREE.Mesh(geo, beamMat);
+    fan.frustumCulled = false;
+    this.beam.add(fan);
   }
 
   update(dt) {
-    this.spin += dt * 0.6;            // slow lighthouse sweep (~5.5s/rev per fan)
-    this.beam.rotation.y = this.spin;
+    // rock the beam back and forth across the seaward arc (no full rotation)
+    this.spin += dt * 0.55;
+    this.beam.rotation.y = BEAM_CENTER + Math.sin(this.spin) * BEAM_SWEEP;
   }
 }
