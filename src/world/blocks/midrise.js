@@ -43,6 +43,15 @@ function buildMidrise(g, col, b, seed) {
     const [x, z] = T(u, v), brand = pick(STORE_COLORS, s, 1), h = 8 + hash(s, 2) % 3;
     g.boxB(x, gy, z, Dw(uw, vd), h, Dd(uw, vd), P.offwhite);
     col.add(x, 0, z, Dw(uw, vd), h + 0.5, Dd(uw, vd));
+    // coursing lines on the three blank walls (the storefront `faceV` side is skipped)
+    const course = (uc, vc, run, len, nu, nv) => {
+      const du = run === 'u' ? len : 0.06, dv = run === 'v' ? len : 0.06;
+      const [lx, lz] = T(uc + nu * 0.06, vc + nv * 0.06);
+      for (let k = 1; k <= 4; k++) g.box(lx, gy + (h * k) / 5, lz, Dw(du, dv), 0.12, Dd(du, dv), P.concreteDark, 0, false);
+    };
+    course(u, v - faceV * vd / 2, 'u', uw - 2.5, 0, -faceV); // back wall
+    course(u - uw / 2, v, 'v', vd - 2.5, -1, 0);             // side wall
+    course(u + uw / 2, v, 'v', vd - 2.5, +1, 0);             // side wall
     g.boxB(x, gy + h, z, Dw(uw + 0.4, vd + 0.4), 0.7, Dd(uw + 0.4, vd + 0.4), P.roofLight); // parapet
     for (let i = -1; i <= 1; i++) { const [rx, rz] = T(u + i * uw * 0.26, v + vd * 0.12); g.boxB(rx, gy + h + 0.7, rz, 3, 1.4, 3, P.concreteDark); }
     const front = v + faceV * vd / 2;
