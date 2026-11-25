@@ -15,6 +15,7 @@ import { Speakers } from './fx/speakers.js';
 import { Fountains } from './fx/fountains.js';
 import { FOUNTAINS } from './world/blocks/index.js';
 import { updateStore, storeHint, inStore } from './world/landmarks/store.js';
+import { updateBubbles } from './fx/bubble.js';
 import { key } from './core/keycap.js';
 import { mergeStatic } from './core/merge.js';
 
@@ -228,6 +229,7 @@ function tick() {
   if (locked) {
     player.update(dt);
     updateStore(player, dt); // Hansen's doorway hint + fade-and-teleport
+    updateBubbles(player, dt); // bob + billboard every speech bubble (store workers + greeters)
     traffic.update(dt, player);
     peds.update(dt, traffic, player);
     balls.update(dt, player, traffic);

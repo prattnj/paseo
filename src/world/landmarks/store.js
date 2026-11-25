@@ -25,6 +25,7 @@ import { makeHumanoid, mat } from '../../actors/character.js';
 import { slabAndSidewalk, parkingLotAt, makeTextTexture, cornerLamps, wallScoring } from '../blocks/kit.js';
 import { tree, planter, scatterTrees } from '../blocks/props.js';
 import { key } from '../../core/keycap.js';
+import { makeBubble } from '../../fx/bubble.js';
 
 // ---- palette -------------------------------------------------------------
 const HANSEN_GREEN = 0x3f9d57;   // friendly storefront green (sign band, canopy)
@@ -364,7 +365,12 @@ function sideCounters(g, col, scene, cxCounter, faceDir, z0, z1) {
     col.add(cxCounter, FLOOR_Y, cz, halfDepth * 2, 1.0, len);
     g.boxB(cxCounter, FLOOR_Y + 1.0, cz, halfDepth * 2 + 0.16, 0.1, len, COUNTER_TOP); // overhang top
     g.boxB(cxCounter + faceDir * 0.2, FLOOR_Y + 1.1, cz - len * 0.3, 0.5, 0.4, 0.6, 0x2a2f36); // register
-    worker(scene, wx, cz, ry, HANSEN_GREEN, hash(Math.round(cxCounter), i)); // cashier
+    // Every side-counter worker stands 4m toward the entrance (-z) of their
+    // segment and gets a floating speech-bubble (just friendly for now — you
+    // can't talk to them yet).
+    const wz = cz - 4;
+    worker(scene, wx, wz, ry, HANSEN_GREEN, hash(Math.round(cxCounter), i));
+    makeBubble(scene, wx + faceDir * 0.5, FLOOR_Y + 2.55, wz);
   }
 }
 
@@ -454,6 +460,8 @@ export function updateStore(player, dt) {
   if (!EXT_DOOR) return; // grocery not built yet
 
   updateDog(player.pos, dt); // the store dog trots + wags every frame
+
+  // (worker bubbles bob + billboard via the shared fx/bubble.js pump in main.js)
 
   // advance an in-progress fade transition (input + hint suppressed meanwhile)
   if (trans) {
