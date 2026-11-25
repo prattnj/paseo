@@ -22,7 +22,7 @@ import * as THREE from 'three';
 import { PALETTE as P, SIDEWALK_H } from '../../core/palette.js';
 import { hash, pick } from '../../core/util.js';
 import { makeHumanoid, mat } from '../../actors/character.js';
-import { slabAndSidewalk, parkingLotAt, makeTextTexture, cornerLamps } from '../blocks/kit.js';
+import { slabAndSidewalk, parkingLotAt, makeTextTexture, cornerLamps, wallScoring } from '../blocks/kit.js';
 import { tree, planter, scatterTrees } from '../blocks/props.js';
 import { key } from '../../core/keycap.js';
 
@@ -76,8 +76,12 @@ export function buildGrocery(g, col, b, seed, scene) {
 
   // --- forecourt parking lot: runs from the store out to the front street ---
   const lot = { x0: 27, x1: 93, z0: frontZ + 2, z1: r.z1 - 1 };
+  // keep a clear walking lane from the storefront: no cars in the aisle
+  // directly ahead of the door (x≈cx) nor within ~11 m of it in z.
+  const nearDoor = (px, pz) => Math.abs(px - cx) < 9 && pz < frontZ + 13;
   parkingLotAt(g, col, (lot.x0 + lot.x1) / 2, (lot.z0 + lot.z1) / 2,
-    lot.x1 - lot.x0, lot.z1 - lot.z0, gy, hash(seed, 2));
+    lot.x1 - lot.x0, lot.z1 - lot.z0, gy, hash(seed, 2),
+    0, null, 14, undefined, undefined, nearDoor);
   // driveway curb-cuts stitching the lot to the E-W street just south (z=-335)
   for (const dx of [-16, 16]) g.boxB(cx + dx, SIDEWALK_H + 0.02, r.z1 + 1.5, 10, 0.02, 7, P.road);
 
@@ -101,6 +105,11 @@ export function buildGrocery(g, col, b, seed, scene) {
 function buildStoreShell(g, col, scene, cx, cz, w, d, h, gy, frontZ) {
   g.boxB(cx, gy, cz, w, h, d, P.offwhite);                       // main mass
   col.add(cx, 0, cz, w, h + 0.5, d);                            // solid collider
+  // coursing lines on the blank side + back walls (the busy front is left clear)
+  const wsOpt = { hex: P.concreteDark, rows: 4, margin: 1.2, lineW: 0.12 };
+  wallScoring(g, cx - w / 2, gy, cz, 'z', d, h, -1, wsOpt);
+  wallScoring(g, cx + w / 2, gy, cz, 'z', d, h, +1, wsOpt);
+  wallScoring(g, cx, gy, cz - d / 2, 'x', w, h, -1, wsOpt);
   g.boxB(cx, gy + h, cz, w + 0.5, 0.8, d + 0.5, P.roofLight);    // parapet
   for (const sx of [-1, 0, 1]) g.boxB(cx + sx * w * 0.28, gy + h + 0.8, cz - 2, 3, 1.4, 3, P.concreteDark); // roof units
 
