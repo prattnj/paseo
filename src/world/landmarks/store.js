@@ -216,9 +216,13 @@ let dog = null; // { group, tail, legs:[…], x, z, heading, phase, wag }
 // origin sits on FLOOR_Y). Legs and tail are pivots so they can swing/wag.
 function buildDog(scene, x, z) {
   const G = new THREE.Group();
+  // The dog is an animated actor but is built during the static city pass (before
+  // mergeStatic). Tag every part noMerge so the merger doesn't bake his meshes
+  // into frozen static geometry and gut his pivot groups — that would leave him
+  // stuck at his spawn spot, unable to trot after you.
   const box = (w, h, d, hex, px, py, pz) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(hex));
-    m.position.set(px, py, pz); m.castShadow = true; G.add(m); return m;
+    m.position.set(px, py, pz); m.castShadow = true; m.userData.noMerge = true; G.add(m); return m;
   };
 
   box(0.38, 0.4, 1.15, DOG_BODY, 0, 0.7, 0);      // lean body
@@ -236,7 +240,7 @@ function buildDog(scene, x, z) {
   const leg = (px, pz) => {
     const p = new THREE.Group();
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.56, 0.11), mat(DOG_LEG));
-    m.position.y = -0.28; m.castShadow = true;
+    m.position.y = -0.28; m.castShadow = true; m.userData.noMerge = true;
     p.add(m); p.position.set(px, 0.56, pz); G.add(p); return p;
   };
   const legs = [leg(-0.13, 0.4), leg(0.13, 0.4), leg(-0.13, -0.4), leg(0.13, -0.4)];
@@ -244,7 +248,7 @@ function buildDog(scene, x, z) {
   // tail — pivot at the rump, raised up, wags side to side
   const tail = new THREE.Group();
   const tm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.5), mat(DOG_BODY));
-  tm.position.z = -0.25; tm.castShadow = true;
+  tm.position.z = -0.25; tm.castShadow = true; tm.userData.noMerge = true;
   tail.add(tm);
   tail.position.set(0, 0.8, -0.52);
   tail.rotation.x = -0.7; // angled up
