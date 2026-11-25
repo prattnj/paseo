@@ -5,6 +5,7 @@ import { hash } from '../../core/util.js';
 import { column, archHeader, STONE, STONE_LT, STONE_MD } from './pieces.js';
 import { fountain, tree, hedge, bench, flowerBed, planter, lamp } from './props.js';
 import { slabAndSidewalk, cornerLamps, concreteScoring, wallScoring } from './kit.js';
+import { buildBulletins, buildPickets } from './bulletin.js';
 
 const DOME_HEX = 0x8fb4a8;  // verdigris copper dome
 const GOLD = 0xd9b45a;      // gilded finials
@@ -165,7 +166,7 @@ function obelisk(g, col, x, z, y) {
   col.add(x, 0, z, 10, 3, 10);
 }
 
-function buildPlaza(g, col, b, seed) {
+function buildPlaza(g, col, b, seed, scene) {
   const r = slabAndSidewalk(g, col, b, P.concreteDark);
   // Faint scored expansion-joint grid so the dark courtyard concrete reads as
   // laid paving rather than one flat sheet. concreteScoring draws at SCORE_Y
@@ -292,6 +293,11 @@ function buildPlaza(g, col, b, seed) {
 
   obelisk(g, col, cx, cz, y);
   cornerLamps(g, col, b);
+
+  // portfolio bulletin boards scattered through the courtyard (see bulletin.js)
+  buildBulletins(g, col, scene);
+  // arrow picket signs pointing the way around the plaza (see bulletin.js)
+  buildPickets(g, col, scene);
 }
 
 export { buildPlaza };

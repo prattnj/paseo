@@ -16,6 +16,7 @@ import { Fountains } from './fx/fountains.js';
 import { FOUNTAINS } from './world/blocks/index.js';
 import { updateStore, storeHint, inStore, storeDialogOpen } from './world/landmarks/store.js';
 import { updateBubbles } from './fx/bubble.js';
+import { updateProjectLinks, projectLinkHint } from './world/blocks/bulletin.js';
 import { key } from './core/keycap.js';
 import { mergeStatic } from './core/merge.js';
 import { initWardrobe, wardrobeOpen } from './core/wardrobe.js';
@@ -241,6 +242,9 @@ function tick() {
     if (!storeDialogOpen()) player.update(dt);
     updateStore(player, dt); // Hansen's doorway hint + fade-and-teleport + stylist chat
     updateBubbles(player, dt); // bob + billboard every speech bubble (store workers + greeters)
+    // project bulletin boards: offer "E open <project>" when standing in front of one
+    updateProjectLinks(player, !!(player.car || player.pending || player.carHint() ||
+      storeHint() || storeDialogOpen() || wardrobeOpen()));
     traffic.update(dt, player);
     peds.update(dt, traffic, player);
     balls.update(dt, player, traffic);
@@ -278,7 +282,7 @@ function tick() {
   // near-car HUD hint (HTML: the key letter is drawn as a keycap icon)
   const hint = document.getElementById('hint');
   if (hint) {
-    const html = player.car ? `${key('E')} get out` : (player.carHint() || storeHint() || balls.summonHint());
+    const html = player.car ? `${key('E')} get out` : (player.carHint() || storeHint() || projectLinkHint() || balls.summonHint());
     if (lastHintHtml !== html) { hint.innerHTML = html; lastHintHtml = html; }
     hint.style.display = html ? 'block' : 'none';
   }
