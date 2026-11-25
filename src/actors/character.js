@@ -60,10 +60,54 @@ function limb(w, h, d, hex, pivotY) {
   return pivot;
 }
 
+// A hairstyle is a small set of hair-coloured boxes stacked on top of the head
+// (head top sits at ~y1.75). `hairStyle` selects the shape; the catalog of ids
+// lives in core/appearance.js and is what the player wardrobe swaps between.
+// Each box is pushed via the same `box(w,h,d,hex,x,y,z)` collector used for the
+// rest of the body, so it bakes into the one merged mesh for free.
+function addHair(box, style, hair) {
+  switch (style) {
+    case 'bald':
+      break;
+    case 'buzz': // close-cropped cap out to the head edges (a hair proud, so it
+      // fully encloses the crown to the very edge without z-fighting the head faces)
+      box(0.35, 0.05, 0.33, hair, 0, 1.74, 0);
+      break;
+    case 'flattop': // tall squared-off block
+      box(0.38, 0.22, 0.36, hair, 0, 1.81, 0);
+      break;
+    case 'afro': // big rounded pouf, wider than the head all round
+      box(0.48, 0.34, 0.46, hair, 0, 1.82, 0);
+      break;
+    case 'mohawk': // narrow crest running front-to-back (shaved sides: no cap)
+      box(0.1, 0.24, 0.34, hair, 0, 1.85, 0);
+      break;
+    case 'ponytail': // crown that carries down the back of the head, plus the tail
+      box(0.37, 0.16, 0.35, hair, 0, 1.75, 0);      // crown
+      box(0.37, 0.3, 0.12, hair, 0, 1.58, -0.15);   // hair down the back of the head
+      box(0.12, 0.44, 0.13, hair, 0, 1.5, -0.24);   // ponytail
+      break;
+    case 'bun': // top knot
+      box(0.37, 0.13, 0.35, hair, 0, 1.76, 0);
+      box(0.17, 0.17, 0.17, hair, 0, 1.9, -0.02);
+      break;
+    case 'long': // full crown wrapping the head, side locks + a drape down the back
+      box(0.4, 0.2, 0.38, hair, 0, 1.74, 0);                  // oversized crown covers top + sides (no skin gap)
+      box(0.42, 0.5, 0.12, hair, 0, 1.42, -0.19);             // back drape, tall enough to meet the crown
+      for (const sx of [-1, 1]) box(0.09, 0.5, 0.34, hair, sx * 0.205, 1.45, -0.04); // side locks reaching up into the crown (recessed so they don't z-fight the face)
+      break;
+    case 'short':
+    default: // the original single hair box
+      box(0.37, 0.14, 0.35, hair, 0, 1.76, 0);
+      break;
+  }
+}
+
 // `robe` (hex) dresses the figure in a long robe (thobe/abaya) covering the
 // legs; `headwear` is 'cap' | 'keffiyeh' | 'hijab' (with `headColor`), replacing
-// the default hair — for traditional dress.
-export function makeHumanoid({ shirt = 0x4a90d9, pants = 0x37474f, skin = 0xf0c8a0, hair = 0x5d4037, robe = null, headwear = null, headColor = 0xf2f4f5 } = {}) {
+// the default hair — for traditional dress. `hairStyle` (default 'short')
+// selects the hair shape when no headwear covers it.
+export function makeHumanoid({ shirt = 0x4a90d9, pants = 0x37474f, skin = 0xf0c8a0, hair = 0x5d4037, hairStyle = 'short', robe = null, headwear = null, headColor = 0xf2f4f5 } = {}) {
   const g = new THREE.Group();
   const upper = robe || shirt;
 
@@ -84,7 +128,7 @@ export function makeHumanoid({ shirt = 0x4a90d9, pants = 0x37474f, skin = 0xf0c8
     box(0.42, 0.52, 0.16, headColor, 0, 1.42, -0.16);
     for (const sx of [-1, 1]) box(0.09, 0.44, 0.34, headColor, sx * 0.2, 1.5, 0.02);
   } else {
-    box(0.37, 0.14, 0.35, hair, 0, 1.76, 0);
+    addHair(box, hairStyle, hair);
   }
   const body = new THREE.Mesh(mergeBoxes(parts), bodyMat);
   body.castShadow = true;
