@@ -1,7 +1,7 @@
 // Public API for the city block builders and the shared props/kit that
 // city.js, arena.js and traffic.js consume. Re-exports from the split modules
 // that replaced the former monolithic buildings.js.
-export { tree, scatterTrees, treeFill, bench, lamp, curbsideParking, PARKED } from './props.js';
+export { tree, scatterTrees, treeFill, bench, lamp, curbsideParking, PARKED, FOUNTAINS } from './props.js';
 export { parkingLotAt, ironFence } from './kit.js';
 
 export { buildApartments } from './apartments.js';

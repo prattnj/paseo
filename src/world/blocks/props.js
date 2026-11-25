@@ -114,15 +114,33 @@ function lamp(g, col, x, z) {
   col.add(x, 0, z, 0.35, 5, 0.35);
 }
 
-function fountain(g, col, x, z, dry = false) {
+// Wet fountains register here so main.js can hang animated water (the falling
+// jet + arcing droplets) over them after the static merge — the pooled basins
+// stay static geometry; only the moving water is a live fx layer. Dry fountains
+// are left out (no water to animate).
+const FOUNTAINS = [];
+
+// The circular basin used to carry a 7.8×7.8 square collider, which walled the
+// player off well beyond the round rim at the corners. Approximate the circle
+// instead with an octagon: four bands (axis pair + 45° pair), each a rectangle
+// whose corners sit exactly on the rim radius, so their union stays inside the
+// basin and you can walk right up to it on every side.
+const _OCT_A = [0, Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4];
+const _OCT_LONG = 7.21;  // 2·R·cos(22.5°), R = 3.9 (outer rim)
+const _OCT_SHORT = 2.99; // 2·R·sin(22.5°)
+
+// `y0` raises the whole basin onto a plinth (e.g. the mosque şadırvan); the
+// animated water is registered with the same base so its streams line up.
+function fountain(g, col, x, z, dry = false, y0 = 0) {
   const wet = dry ? 0x6b6455 : P.water; // dry -> grimy stain in the empty basins
-  g.cyl(x, 0, z, 3.6, 3.9, 0.7, P.concrete, 10);
-  g.cyl(x, 0.5, z, 3.2, 3.2, 0.35, wet, 10);
-  g.cyl(x, 0.8, z, 0.5, 0.7, 1.6, P.concrete, 8);
-  g.cyl(x, 2.3, z, 1.4, 1.5, 0.3, P.concrete, 8);
-  g.cyl(x, 2.5, z, 1.1, 1.1, 0.25, wet, 8);
-  if (!dry) g.ico(x, 3.1, z, 0.45, P.water, 0); // no spray plume when dry
-  col.add(x, 0, z, 7.8, 1.2, 7.8);
+  g.cyl(x, y0, z, 3.6, 3.9, 0.7, P.concrete, 10);
+  g.cyl(x, y0 + 0.5, z, 3.2, 3.2, 0.35, wet, 10);
+  g.cyl(x, y0 + 0.8, z, 0.5, 0.7, 1.6, P.concrete, 8);
+  g.cyl(x, y0 + 2.3, z, 1.4, 1.5, 0.3, P.concrete, 8);
+  g.cyl(x, y0 + 2.5, z, 1.1, 1.1, 0.25, wet, 8);
+  if (!dry) FOUNTAINS.push({ x, z, y: y0 }); // wet: animated jet added later, in fx/fountains.js
+  // (dry fountains stay bone-dry — no plume, static or animated)
+  for (const a of _OCT_A) col.add(x, y0, z, _OCT_LONG, 1.2, _OCT_SHORT, a);
 }
 
 function hedge(g, col, x, z, sx, sz) {
@@ -326,6 +344,6 @@ function kiosk(g, col, x, z, seed, ry = 0) {
   col.add(x, 0, z, 2.8, 3.4, 2.8, ry);
 }
 
-export { tree, scatterTrees, treeFill, bench, lamp, fountain, hedge, fenceRun,
+export { tree, scatterTrees, treeFill, bench, lamp, fountain, FOUNTAINS, hedge, fenceRun,
   parkedCar, curbsideParking, planter, dumpster, pool, swingSet, flowerBed,
   slide, sandbox, gazebo, kiosk, trashCluster };

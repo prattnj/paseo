@@ -12,6 +12,8 @@ import { buildForest } from './world/landmarks/forest.js';
 import { Smoke } from './world/landmarks/factory.js';
 import { Minimap } from './core/minimap.js';
 import { Speakers } from './fx/speakers.js';
+import { Fountains } from './fx/fountains.js';
+import { FOUNTAINS } from './world/blocks/index.js';
 import { updateStore, storeHint } from './world/landmarks/store.js';
 import { mergeStatic } from './core/merge.js';
 
@@ -124,7 +126,7 @@ bgm.volume = 0.35;
 // before tick() starts, and every handler only fires after the player has
 // clicked Play — i.e. long after boot() has finished.
 let lighthouse, pooManHero, smoke, minimap, traffic, player, peds, balls;
-let listener, speakers;
+let listener, speakers, fountains;
 let started = false; // flips true the first time the player clicks Play
 
 // ---- pointer lock ----
@@ -216,6 +218,7 @@ function tick() {
     balls.update(dt, player, traffic);
     lighthouse.update(dt);
     pooManHero.update(dt);
+    fountains.update(dt); // fountain spray arcs
     speakers.update(dt, player, bgm);
 
     // Refresh the (manually driven) shadow map every SHADOW_EVERY active frames:
@@ -294,6 +297,7 @@ async function boot() {
   lighthouse = new Lighthouse(scene, colliders);
   pooManHero = new PooManHero(scene); // the town hero flying his sky patrol
   smoke = new Smoke(scene);
+  fountains = new Fountains(scene, FOUNTAINS); // animated water over every wet fountain
   await raf();
 
   setProgress(74, 'Drawing the map…');
