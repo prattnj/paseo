@@ -19,6 +19,8 @@ import { updateBubbles } from './fx/bubble.js';
 import { key } from './core/keycap.js';
 import { mergeStatic } from './core/merge.js';
 import { initWardrobe, wardrobeOpen } from './core/wardrobe.js';
+import { Coins } from './core/coins.js';
+import { Unlocks } from './core/unlocks.js';
 
 const app = document.getElementById('app');
 const overlay = document.getElementById('overlay');
@@ -141,7 +143,7 @@ let storeWasIn = false;  // edge-detect entering the store, to restart the song
 // before tick() starts, and every handler only fires after the player has
 // clicked Play — i.e. long after boot() has finished.
 let lighthouse, pooManHero, smoke, minimap, traffic, player, peds, balls;
-let listener, speakers, fountains;
+let coins, unlocks, listener, speakers, fountains;
 let started = false; // flips true the first time the player clicks Play
 
 // ---- pointer lock ----
@@ -271,7 +273,7 @@ function tick() {
   // near-car HUD hint (HTML: the key letter is drawn as a keycap icon)
   const hint = document.getElementById('hint');
   if (hint) {
-    const html = player.car ? `${key('E')} get out` : (player.nearCar ? `${key('E')} drive` : storeHint());
+    const html = player.car ? `${key('E')} get out` : (player.carHint() || storeHint());
     if (lastHintHtml !== html) { hint.innerHTML = html; lastHintHtml = html; }
     hint.style.display = html ? 'block' : 'none';
   }
@@ -361,12 +363,20 @@ async function boot() {
   applyPanorama();        // frame the title screen with the static city vista
   updateSunShadow();      // centre the shadow window on the panorama view before its render
 
+  // coins / unlocks (both persisted in localStorage). The player needs them to
+  // run the buy-prompt when you press E on a locked vehicle. All coin AMOUNTS
+  // live in economy.js.
+  coins = new Coins();
+  unlocks = new Unlocks();
+  player.coins = coins;
+  player.unlocks = unlocks;
+
   // Poo Man memorial speakers (positional music that ducks the bgm).
   listener = new THREE.AudioListener();
   camera.add(listener);
   speakers = new Speakers(scene, listener);
 
-  window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, applyPanorama }; // debug/testing hook
+  window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, coins, unlocks, applyPanorama }; // debug/testing hook
   await raf();
 
   setProgress(100, 'Ready');

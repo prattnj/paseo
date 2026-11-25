@@ -10,6 +10,8 @@ import { collideCarWorld, CAR_R, pitchLift } from './traffic.js';
 import { groundHeight, nearestBeach, WATER_Y, inReservoir, reservoirRespawn } from '../world/island.js';
 import { gridCellAt } from '../world/layout.js';
 import { mudFactor } from '../world/blocks/construction.js';
+import { VEHICLE_NAMES } from '../core/economy.js';
+import { key } from '../core/keycap.js';
 
 const WALK = 6;
 const SPRINT = 13;
@@ -50,6 +52,16 @@ export class Player {
     this.driveSpeed = 0;
     this.driveHeading = 0;
     this._eToggle = false;
+
+    // Coins / vehicle unlocks (wired in main.js after construction). While a
+    // locked vehicle's purchase is being confirmed, `pending` holds that car
+    // and the buy prompt is shown; Y/N (below) resolve it.
+    this.coins = null;
+    this.unlocks = null;
+    this.pending = null;
+    this._buyConfirm = false;
+    this._buyCancel = false;
+    this._buyEl = null;
     this._moveCtx = null;            // last movePlayer result (support tracking)
     this._groundAnchor = this.pos.y; // last grounded height (anti-cliff-hop)
     this._drownT = 0;                // fade-out countdown after going under
@@ -62,6 +74,11 @@ export class Player {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') e.preventDefault();
       if (e.code === 'KeyE' && !e.repeat) this._eToggle = true;
+      // Y/N answer a pending buy prompt (see updateBuyPrompt)
+      if (this.pending && !e.repeat) {
+        if (e.code === 'KeyY') this._buyConfirm = true;
+        else if (e.code === 'KeyN') this._buyCancel = true;
+      }
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -120,9 +137,11 @@ export class Player {
 
     if (this._eToggle) {
       this._eToggle = false;
-      if (this.car) this.exitCar();
+      if (this.pending) { /* prompt open — E is a no-op, answer with Y/N */ }
+      else if (this.car) this.exitCar();
       else this.tryEnterCar();
     }
+    if (this.pending) this.updateBuyPrompt();
     if (this.car) this.updateDrive(dt);
     else this.updateWalk(dt);
 
@@ -297,6 +316,12 @@ export class Player {
   tryEnterCar() {
     const best = this.findNearestCar();
     if (!best) return;
+    // Locked special vehicle (tank / dragster): don't drive it yet — open the
+    // buy prompt and let the player confirm the coin purchase with Y/N.
+    if (this.unlocks && this.unlocks.isLocked(best.type)) {
+      this.openBuyPrompt(best);
+      return;
+    }
     this.car = best;
     this.nearCar = null;
     best.mode = 'driven';
@@ -308,6 +333,75 @@ export class Player {
     this.driveHeading = best.mesh.rotation.y;
     this.yaw = this.driveHeading + Math.PI; // start looking down the road
     this.char.group.visible = false;
+  }
+
+  // ---- locked-vehicle purchase (Y/N confirm) --------------------------------
+  _buyPromptEl() {
+    return this._buyEl || (this._buyEl = document.getElementById('buyPrompt'));
+  }
+
+  // Text describing the pending purchase (affordable → Y/N; broke → close-only).
+  renderBuyPrompt() {
+    const el = this._buyPromptEl();
+    if (!el || !this.pending) return;
+    const c = this.pending.car;
+    const name = VEHICLE_NAMES[c.type] || 'vehicle';
+    const cost = this.unlocks.cost(c.type);
+    const afford = this.coins && this.coins.balance >= cost;
+    el.innerHTML = afford
+      ? `Unlock the <b>${name}</b> for <b>${cost}</b> <img src="/coin.svg" alt="coins" />?
+         &nbsp; ${key('Y')} buy &nbsp; ${key('N')} cancel`
+      : `The <b>${name}</b> costs <b>${cost}</b> <img src="/coin.svg" alt="coins" /> — you have ${this.coins ? this.coins.balance : 0}.
+         &nbsp; ${key('N')} close`;
+    el.style.display = 'block';
+  }
+
+  openBuyPrompt(car) {
+    this.pending = { car };
+    this._buyConfirm = false;
+    this._buyCancel = false;
+    this.nearCar = null; // suppress the walking "E — drive" hint
+    this.renderBuyPrompt();
+  }
+
+  closeBuyPrompt() {
+    this.pending = null;
+    this._buyConfirm = false;
+    this._buyCancel = false;
+    const el = this._buyPromptEl();
+    if (el) el.style.display = 'none';
+  }
+
+  // Resolve the open prompt: N (or walking out of range) cancels; Y buys if
+  // affordable (then drops the player straight into the driver's seat).
+  updateBuyPrompt() {
+    if (this._buyCancel) { this.closeBuyPrompt(); return; }
+    // walked away from the car → abandon the purchase
+    if (this.findNearestCar() !== this.pending.car) { this.closeBuyPrompt(); return; }
+    if (this._buyConfirm) {
+      this._buyConfirm = false;
+      const car = this.pending.car;
+      if (this.unlocks.purchase(car.type, this.coins)) {
+        this.closeBuyPrompt();
+        this.tryEnterCar(); // now unlocked — climbs straight in
+      } else {
+        this.renderBuyPrompt(); // still broke — re-show the shortfall
+      }
+    }
+  }
+
+  // HUD hint for the nearby car while on foot (used by main.js). Returns an HTML
+  // string (keycap markup) or '' when there's nothing to prompt (driving, or a
+  // purchase confirm is on screen).
+  carHint() {
+    if (this.car || this.pending) return '';
+    const c = this.nearCar;
+    if (!c) return '';
+    if (this.unlocks && this.unlocks.isLocked(c.type)) {
+      const name = VEHICLE_NAMES[c.type] || 'vehicle';
+      return `${key('E')} Unlock ${name} · ${this.unlocks.cost(c.type)} coins`;
+    }
+    return `${key('E')} drive`;
   }
 
   exitCar() {
