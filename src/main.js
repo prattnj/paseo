@@ -278,7 +278,7 @@ function tick() {
   // near-car HUD hint (HTML: the key letter is drawn as a keycap icon)
   const hint = document.getElementById('hint');
   if (hint) {
-    const html = player.car ? `${key('E')} get out` : (player.carHint() || storeHint());
+    const html = player.car ? `${key('E')} get out` : (player.carHint() || storeHint() || balls.summonHint());
     if (lastHintHtml !== html) { hint.innerHTML = html; lastHintHtml = html; }
     hint.style.display = html ? 'block' : 'none';
   }

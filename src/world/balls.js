@@ -3,6 +3,7 @@
 // roll with friction, and they bounce off tall world colliders (goal posts,
 // lamps, trees, benches) while passing under overhead ones (the crossbar).
 import * as THREE from 'three';
+import { key } from '../core/keycap.js';
 
 // Spawn registry filled by the city builder (buildPark pushes {x, z}); read by
 // main.js after the world is built.
@@ -20,6 +21,14 @@ const BALL_R = 0.5;                 // ~1 m diameter
 const FIELD_TOP = 0.20;            // raised park-block surface height
 const MAX_SPEED = 128;              // clamp so a boosted car can't launch it absurdly
 const FRICTION = 1.9;              // rolling decay rate (1/s)
+
+// "Summon ball": standing inside a pitch's centre circle (radius 4.5 m, see
+// park.js soccerField) offers an E action that teleports that pitch's ball back
+// to just in front of the player — far enough out that the player capsule
+// (0.55) and the ball never overlap, so it doesn't get shoved on arrival.
+const SUMMON_R = 4.5;              // centre-circle radius = trigger zone
+const SUMMON_MIN_D = 4;            // ball already this close → no prompt
+const SUMMON_AHEAD = 2.2;          // drop distance in front of the player
 
 // The 12 normalised icosahedron-vertex directions — the centres of a soccer
 // ball's black pentagons.
@@ -67,6 +76,35 @@ export class Balls {
     this._axis = new THREE.Vector3();
     this._q = new THREE.Quaternion();
     this.scene = scene;
+    this._summon = null;  // ball the player can currently summon (or null)
+    this._ePrev = false;  // KeyE edge detection
+  }
+
+  // HUD hint for the summon action ('' when not offered) — read by main.js.
+  summonHint() { return this._summon ? `${key('E')} summon ball` : ''; }
+
+  // Offer + perform the summon. Only on foot, with no car/buy prompt competing
+  // for E, inside a pitch's centre circle while its ball has wandered off.
+  _updateSummon(player) {
+    const eDown = player.keys.has('KeyE');
+    const eEdge = eDown && !this._ePrev;
+    this._ePrev = eDown;
+    this._summon = null;
+    if (player.car || player.pending || player.carHint()) return;
+    const px = player.pos.x, pz = player.pos.z;
+    for (const ball of this.balls) {
+      if (Math.hypot(px - ball.homeX, pz - ball.homeZ) > SUMMON_R) continue;
+      if (Math.hypot(ball.x - px, ball.z - pz) < SUMMON_MIN_D) return;
+      this._summon = ball;
+      break;
+    }
+    if (!this._summon || !eEdge) return;
+    const ball = this._summon, h = player.heading;
+    ball.x = px + Math.sin(h) * SUMMON_AHEAD;
+    ball.z = pz + Math.cos(h) * SUMMON_AHEAD;
+    ball.vx = 0; ball.vz = 0;
+    ball.mesh.position.set(ball.x, ball.y, ball.z);
+    this._summon = null;
   }
 
   add(x, z, r = BALL_R) {
@@ -74,7 +112,7 @@ export class Balls {
     const y = FIELD_TOP + r;
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
-    this.balls.push({ mesh, x, z, y, r, vx: 0, vz: 0 });
+    this.balls.push({ mesh, x, z, y, r, vx: 0, vz: 0, homeX: x, homeZ: z });
   }
 
   // Shove `ball` away from a pusher at (px,pz) moving at (pvx,pvz); `pr` is the
@@ -126,6 +164,7 @@ export class Balls {
   }
 
   update(dt, player, traffic) {
+    if (player) this._updateSummon(player);
     for (const ball of this.balls) {
       // integrate + rolling friction
       ball.x += ball.vx * dt;
