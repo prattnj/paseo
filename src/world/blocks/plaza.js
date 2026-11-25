@@ -4,10 +4,15 @@ import { PALETTE as P, SIDEWALK_H } from '../../core/palette.js';
 import { hash } from '../../core/util.js';
 import { column, archHeader, STONE, STONE_LT, STONE_MD } from './pieces.js';
 import { fountain, tree, hedge, bench, flowerBed, planter, lamp } from './props.js';
-import { slabAndSidewalk, cornerLamps } from './kit.js';
+import { slabAndSidewalk, cornerLamps, concreteScoring, wallScoring } from './kit.js';
 
 const DOME_HEX = 0x8fb4a8;  // verdigris copper dome
 const GOLD = 0xd9b45a;      // gilded finials
+// White marble tones for the central obelisk (cool, brighter than the warm
+// limestone STONE_* used by the surrounding wings so it reads as a monument).
+const MARBLE = 0xeef0f0;    // shaft body (bright cool white)
+const MARBLE_LT = 0xfafbfb; // highlights (near-white)
+const MARBLE_MD = 0xd6dad9; // steps / shadowed faces (soft grey)
 
 // Taller projecting block at a corner of the square, with engaged columns.
 function cornerPavilion(g, col, cx, cz, s, y, H) {
@@ -48,6 +53,11 @@ function plazaWing(g, col, runAxis, lo, hi, nearP, farP, gateC, y, H, seed) {
     faceBoxB((a + bnd) / 2, midP, y, len, H, t, STONE);
     const [wx, wz] = place((a + bnd) / 2, midP);
     if (runAxis === 'x') col.add(wx, 0, wz, len, H + 1, t); else col.add(wx, 0, wz, t, H + 1, len);
+    // ashlar coursing up both faces of this wall block (street + courtyard)
+    for (const [fp, fsgn] of [[nearP, -inSign], [farP, inSign]]) {
+      const [fx, fz] = place((a + bnd) / 2, fp);
+      wallScoring(g, fx, y, fz, runAxis, len, H - 1.5, fsgn, { hex: STONE_MD, rows: 5, margin: 1.4, lineW: 0.12 });
+    }
     const n = Math.max(2, Math.round(len / 6.5));
     for (let i = 0; i < n; i++) {
       const al = a + len * ((i + 0.5) / n);
@@ -66,6 +76,13 @@ function plazaWing(g, col, runAxis, lo, hi, nearP, farP, gateC, y, H, seed) {
   // arched gateway
   const [gcx, gcz] = place(gateC, midP);
   archHeader(g, gcx, gcz, runAxis, gateW, t, y + 9, y + H, STONE);
+
+  // coursing up the two tunnel (passage) side walls, running with the passage
+  const tunAxis = runAxis === 'x' ? 'z' : 'x';
+  for (const [gp, fsgn] of [[P1, 1], [P2, -1]]) {
+    const [fx, fz] = place(gp, midP);
+    wallScoring(g, fx, y, fz, tunAxis, t - 1, 8, fsgn, { hex: STONE_MD, rows: 3, margin: 1.0, lineW: 0.12 });
+  }
 
   // warm wall-lights lining the interior side walls of the gateway passage.
   // The passage runs perpendicular (nearP -> farP) through the wall; a sconce
@@ -95,9 +112,12 @@ function plazaWing(g, col, runAxis, lo, hi, nearP, farP, gateC, y, H, seed) {
   // courtyard colonnade set well in front of the far face: a walkable,
   // roofed portico. Columns are solid (with generous gaps to pass between).
   const colH = H - 2, colOff = 4.5, colPerp = farP + inSign * colOff;
-  const runColon = (a, bnd) => {
+  // `trim` drops the column at the gateway end of the row so it doesn't double
+  // up with the taller gateway-flanking column placed just inside it below.
+  const runColon = (a, bnd, trim) => {
     const len = bnd - a, n = Math.max(2, Math.round(len / 6));
-    for (let i = 0; i <= n; i++) {
+    const i0 = trim === 'lo' ? 1 : 0, i1 = trim === 'hi' ? n - 1 : n;
+    for (let i = i0; i <= i1; i++) {
       const [cxx, czz] = place(a + len * (i / n), colPerp);
       column(g, cxx, czz, y, colH, 1.0);
       col.add(cxx, 0, czz, 2.0, colH, 2.0);
@@ -109,8 +129,8 @@ function plazaWing(g, col, runAxis, lo, hi, nearP, farP, gateC, y, H, seed) {
     const ceilInner = colPerp - inSign * 1.3;
     faceBoxB((a + bnd) / 2, (farP + ceilInner) / 2, y + colH, len, 0.5, Math.abs(ceilInner - farP), STONE);
   };
-  runColon(P0, P1);
-  runColon(P2, P3);
+  runColon(P0, P1, 'hi'); // gateway at the P1 (hi) end
+  runColon(P2, P3, 'lo'); // gateway at the P2 (lo) end
   // taller columns flanking the gateway
   for (const gp of [P1 - 1.5, P2 + 1.5]) {
     const [cxx, czz] = place(gp, colPerp);
@@ -135,18 +155,25 @@ function plazaDome(g, x, z, baseY) {
 
 // Central obelisk on a stepped plinth — the city-center monument.
 function obelisk(g, col, x, z, y) {
-  g.boxB(x, y, z, 10, 1.2, 10, STONE_MD);     // stepped base
-  g.boxB(x, y + 1.2, z, 7.5, 1.2, 7.5, STONE);
-  g.boxB(x, y + 2.4, z, 5, 1.4, 5, STONE_LT);
-  g.boxB(x, y + 3.8, z, 4, 4, 4, STONE);      // pedestal
+  g.boxB(x, y, z, 10, 1.2, 10, MARBLE_MD);    // stepped base
+  g.boxB(x, y + 1.2, z, 7.5, 1.2, 7.5, MARBLE);
+  g.boxB(x, y + 2.4, z, 5, 1.4, 5, MARBLE_LT);
+  g.boxB(x, y + 3.8, z, 4, 4, 4, MARBLE);     // pedestal
   let sy = y + 7.8, sw = 3.0;
-  for (let i = 0; i < 6; i++) { g.boxB(x, sy, z, sw, 3.2, sw, STONE_LT); sy += 3.2; sw *= 0.86; }
+  for (let i = 0; i < 6; i++) { g.boxB(x, sy, z, sw, 3.2, sw, MARBLE_LT); sy += 3.2; sw *= 0.86; }
   g.cone(x, sy, z, sw * 0.75, sw * 1.5, GOLD, 4); // gilded pyramidion
   col.add(x, 0, z, 10, 3, 10);
 }
 
 function buildPlaza(g, col, b, seed) {
   const r = slabAndSidewalk(g, col, b, P.concreteDark);
+  // Faint scored expansion-joint grid so the dark courtyard concrete reads as
+  // laid paving rather than one flat sheet. concreteScoring draws at SCORE_Y
+  // (a hair above the concrete top, non-casting), so it can't z-fight the slab;
+  // the tan paths and structures ride well above it and simply cover it. A tone
+  // ~15% darker than concreteDark keeps the joints subtle (its default line hex
+  // is concreteDark itself, which would vanish against this slab).
+  concreteScoring(g, r, 13, 0x83888c);
   const y = SIDEWALK_H;
   const t = 18, cp = 18, H = 20, Hp = 27;
   const cx = r.cx, cz = r.cz;
@@ -164,24 +191,71 @@ function buildPlaza(g, col, b, seed) {
   plazaDome(g, cx, r.z1 - t / 2, y + H);
 
   // ---- formal paved courtyard paths ----
-  // The courtyard concrete slab is raised 0.2 above the sidewalk, so paths
-  // must sit on top of it. All P.path pieces share one height so overlapping
-  // pieces never z-fight; the two-tone central discs are staggered by tone.
-  const gy = y + 0.2; // top of the courtyard concrete
+  // The courtyard concrete top is SIDEWALK_H + 0.03 (slabAndSidewalk's 0.03
+  // ground layer). Path slabs are based exactly on it (no gap) and stand 0.03
+  // proud, so their tops clear the scoring decal (SCORE_Y, ~0.187) and never
+  // coplanar-fight the concrete. All P.path strips share one top so overlaps
+  // are same-colour and invisible; the central discs step up above them.
+  const gy = y + 0.03;          // top of the courtyard concrete
+  const PH = 0.03;              // path strip thickness
+  const PJ = 0xbfb59a;          // paver joint tone (~12% darker than P.path: subtle, low contrast)
+  // Running-bond brick pavers: joint decals (thin, non-casting, a hair above
+  // the path top) laid over a rectangular region. Courses run along `axis`;
+  // butt joints are staggered half a paver between neighbouring courses. The
+  // strips overlap at crossings, so the pattern is laid on NON-overlapping
+  // regions (the ring owns its corners and the arm crossings) so two bonds
+  // never cross-hatch on top of each other.
+  const PAV_L = 1.6, PAV_W = 0.8, JW = 0.08, PT = gy + PH + 0.001;
+  const pavers = (x0, x1, z0, z1, axis) => {
+    const alongX = axis === 'x';
+    const a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1; // along the courses
+    const b0 = alongX ? z0 : x0, b1 = alongX ? z1 : x1; // across them
+    const L = a1 - a0, W = b1 - b0;
+    if (L <= 0.5 || W <= 0.5) return;
+    const nC = Math.max(1, Math.round(W / PAV_W)), cw = W / nC;
+    const joint = (a, b, la, lb) => alongX
+      ? g.boxB(a, PT, b, la, 0.006, lb, PJ, 0, false)
+      : g.boxB(b, PT, a, lb, 0.006, la, PJ, 0, false);
+    for (let j = 1; j < nC; j++) joint((a0 + a1) / 2, b0 + j * cw, L, JW);   // course lines
+    for (let j = 0; j < nC; j++) {                                          // staggered butt joints
+      const bc = b0 + (j + 0.5) * cw;
+      for (let a = a0 + (j % 2 ? PAV_L / 2 : PAV_L); a < a1 - 0.1; a += PAV_L) joint(a, bc, JW, cw);
+    }
+  };
+  const PR = 46, RW = 7, AW = 9; // promenade ring half-size, ring / arm widths
+  const DISC = 17;               // arms' paving starts under the central disc's rim
   // radial arms out to the four gateways
   for (const [gx, gz] of [[cx, r.z0 + t], [cx, r.z1 - t], [r.x0 + t, cz], [r.x1 - t, cz]]) {
     const lenx = Math.abs(gx - cx), lenz = Math.abs(gz - cz);
-    g.boxB((gx + cx) / 2, gy + 0.02, (gz + cz) / 2, lenx < 1 ? 9 : lenx, 0.03, lenz < 1 ? 9 : lenz, P.path);
+    g.boxB((gx + cx) / 2, gy, (gz + cz) / 2, lenx < 1 ? AW : lenx, PH, lenz < 1 ? AW : lenz, P.path);
+    // paved in two pieces: disc rim -> ring, and ring -> gateway
+    const alongZ = lenx < 1, len = alongZ ? lenz : lenx, dir = Math.sign(alongZ ? gz - cz : gx - cx);
+    for (const [s0, s1] of [[DISC, PR - RW / 2], [PR + RW / 2, len]]) {
+      const p0 = Math.min(dir * s0, dir * s1), p1 = Math.max(dir * s0, dir * s1);
+      if (alongZ) pavers(cx - AW / 2, cx + AW / 2, cz + p0, cz + p1, 'z');
+      else pavers(cx + p0, cx + p1, cz - AW / 2, cz + AW / 2, 'x');
+    }
   }
-  // square promenade ring linking the quadrants
-  const PR = 46;
+  // square promenade ring linking the quadrants (x-runs own the corners)
   for (const s of [-1, 1]) {
-    g.boxB(cx, gy + 0.02, cz + s * PR, PR * 2 + 7, 0.03, 7, P.path);
-    g.boxB(cx + s * PR, gy + 0.02, cz, 7, 0.03, PR * 2 + 7, P.path);
+    g.boxB(cx, gy, cz + s * PR, PR * 2 + RW, PH, RW, P.path);
+    g.boxB(cx + s * PR, gy, cz, RW, PH, PR * 2 + RW, P.path);
+    pavers(cx - PR - RW / 2, cx + PR + RW / 2, cz + s * PR - RW / 2, cz + s * PR + RW / 2, 'x');
+    pavers(cx + s * PR - RW / 2, cx + s * PR + RW / 2, cz - PR + RW / 2, cz + PR - RW / 2, 'z');
   }
-  // central plaza: two concentric discs, staggered so the tones don't z-fight
-  g.cyl(cx, gy + 0.03, cz, 18, 18, 0.04, P.sidewalk);
-  g.cyl(cx, gy + 0.05, cz, 12, 12, 0.04, P.path);
+  // central plaza: two concentric discs stepping up above the strips, so the
+  // tones don't z-fight; a ring joint and radial joints score each disc
+  const D1 = gy + PH + 0.02, D2 = D1 + 0.02; // disc tops
+  g.cyl(cx, gy, cz, 18, 18, D1 - gy, P.sidewalk);
+  g.cyl(cx, gy, cz, 12, 12, D2 - gy, P.path);
+  // the cyl template is a 10-gon with vertices at 18° + 36°k (from +x), so the
+  // radials run out to the vertices and read as the paving's segment seams
+  for (let i = 0; i < 10; i++) {
+    const a = ((18 + 36 * i) * Math.PI) / 180;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    g.boxB(cx + ca * 14.9, D1 + 0.001, cz + sa * 14.9, 5.8, 0.006, 0.12, 0x8f969c, -a, false); // outer band
+    g.boxB(cx + ca * 5.9, D2 + 0.001, cz + sa * 5.9, 11.8, 0.006, 0.12, PJ, -a, false);         // inner disc
+  }
 
   // ---- courtyard landscaping (formal, symmetric) ----
   // planters lining the four paths
