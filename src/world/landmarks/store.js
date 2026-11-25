@@ -24,6 +24,7 @@ import { hash, pick } from '../../core/util.js';
 import { makeHumanoid, mat } from '../../actors/character.js';
 import { slabAndSidewalk, parkingLotAt, makeTextTexture, cornerLamps, wallScoring } from '../blocks/kit.js';
 import { tree, planter, scatterTrees } from '../blocks/props.js';
+import { openWardrobe, wardrobeOpen } from '../../core/wardrobe.js';
 import { key } from '../../core/keycap.js';
 import { makeBubble } from '../../fx/bubble.js';
 
@@ -57,8 +58,13 @@ const HINT_R = 3.0, HINT2 = HINT_R * HINT_R;
 const FADE_S = 0.42;             // matches the #fade CSS opacity transition
 let EXT_DOOR = null, INT_DOOR = null;   // { x, z } hint centres
 let EXT_SPAWN = null, INT_SPAWN = null; // { x, y, z, yaw }
+let STYLIST = null;                     // { x, z } front-left cashier: the wardrobe NPC
+const STYLIST_APRON = 0x8e6bd6;         // her distinct grape apron, so she stands out
+const STYLIST_R = 3.0, STYLIST2 = STYLIST_R * STYLIST_R;
 let trans = null;                // in-progress fade: { spawn, t, teleported }
 let ePrev = false;               // KeyE edge detection
+let qPrev = false;               // KeyQ edge detection (dialog "decline")
+let dlg = null;                  // stylist conversation: { phase:'ask'|'bye', t }
 let curHint = '';                // current doorway hint text (read by main.js)
 let inside = false;              // true while the player is in the interior room (read by main.js for the store's music)
 
@@ -366,11 +372,17 @@ function sideCounters(g, col, scene, cxCounter, faceDir, z0, z1) {
     g.boxB(cxCounter, FLOOR_Y + 1.0, cz, halfDepth * 2 + 0.16, 0.1, len, COUNTER_TOP); // overhang top
     g.boxB(cxCounter + faceDir * 0.2, FLOOR_Y + 1.1, cz - len * 0.3, 0.5, 0.4, 0.6, 0x2a2f36); // register
     // Every side-counter worker stands 4m toward the entrance (-z) of their
-    // segment and gets a floating speech-bubble (just friendly for now — you
-    // can't talk to them yet).
+    // segment and gets a floating speech-bubble. The front-left cashier (left
+    // wall, first segment nearest the entrance) is the wardrobe stylist: a
+    // distinct apron + a recorded anchor in front of her counter so updateStore
+    // can offer the "Press E to talk" prompt there, opening the wardrobe
+    // conversation. The others' bubbles are just friendly for now — you can't
+    // talk to them yet.
+    const stylist = faceDir > 0 && i === 0;
     const wz = cz - 4;
-    worker(scene, wx, wz, ry, HANSEN_GREEN, hash(Math.round(cxCounter), i));
+    worker(scene, wx, wz, ry, stylist ? STYLIST_APRON : HANSEN_GREEN, hash(Math.round(cxCounter), i));
     makeBubble(scene, wx + faceDir * 0.5, FLOOR_Y + 2.55, wz);
+    if (stylist) STYLIST = { x: cxCounter + faceDir * (halfDepth + 1.2), z: wz };
   }
 }
 
@@ -442,12 +454,69 @@ function worker(scene, x, z, ry, shirt, seed) {
 }
 
 // ===========================================================================
+// STYLIST CONVERSATION — a small RPG-style bottom dialog box.
+// Talking to the front-left cashier opens this instead of the wardrobe directly:
+// she asks whether you'd like to change your appearance, and you answer from the
+// keyboard — E to step into the studio (opens the wardrobe), Q to politely
+// decline (she signs off, then the box dismisses). The box is a plain DOM
+// overlay (CSS lives in index.html under #dialog); main.js freezes the player
+// while it's up (storeDialogOpen) so it reads as a conversation, not a pause.
+// ===========================================================================
+let dlgEl = null, dlgSay = null, dlgOpts = null; // built lazily on first talk
+const BYE_S = 2.0;                                // how long the sign-off lingers
+
+// True while the stylist conversation box is up — read by main.js to freeze the
+// player (no movement/mouse-look) so it plays as a conversation.
+export function storeDialogOpen() { return !!dlg; }
+
+function ensureDialogDom() {
+  if (dlgEl) return;
+  dlgEl = document.createElement('div');
+  dlgEl.id = 'dialog';
+  dlgEl.innerHTML = `
+    <div class="box">
+      <div class="who">Hansen's Stylist</div>
+      <div class="say"></div>
+      <div class="opts"></div>
+    </div>`;
+  document.body.appendChild(dlgEl);
+  dlgSay = dlgEl.querySelector('.say');
+  dlgOpts = dlgEl.querySelector('.opts');
+}
+
+// Open the conversation: she asks, and the two keyboard choices are shown.
+function openDialog() {
+  ensureDialogDom();
+  dlg = { phase: 'ask', t: 0 };
+  dlgSay.textContent = 'Would you like to change your appearance?';
+  dlgOpts.innerHTML =
+    `<span class="opt">${key('E')} Yes, let's go</span>` +
+    `<span class="opt">${key('Q')} No thanks</span>`;
+  dlgEl.classList.add('show');
+  curHint = '';
+}
+
+// Decline: swap to a brief parting line that dismisses itself after BYE_S.
+function sayGoodbye() {
+  dlg = { phase: 'bye', t: BYE_S };
+  dlgSay.textContent = 'No worries — come back anytime!';
+  dlgOpts.innerHTML = '';
+}
+
+function closeDialog() {
+  dlg = null;
+  if (dlgEl) dlgEl.classList.remove('show');
+  curHint = '';
+}
+
+// ===========================================================================
 // per-frame hint + E-to-enter fade transition (called from main.js)
 // ===========================================================================
 function fadeEl() { return document.getElementById('fade'); }
 function near(p, door) { const dx = p.x - door.x, dz = p.z - door.z; return dx * dx + dz * dz < HINT2; }
+function nearR(p, c, r2) { const dx = p.x - c.x, dz = p.z - c.z; return dx * dx + dz * dz < r2; }
 
-// Current doorway hint as an HTML string with keycap markup ('' when
+// Current doorway/stylist hint as an HTML string with keycap markup ('' when
 // none) — read by the main-loop HUD code, which assigns it via innerHTML.
 export function storeHint() { return curHint; }
 
@@ -479,12 +548,30 @@ export function updateStore(player, dt) {
       }
     }
     ePrev = player.keys.has('KeyE');
+    qPrev = player.keys.has('KeyQ');
     return;
   }
 
   const p = player.pos;
   const eEdge = player.keys.has('KeyE') && !ePrev;
+  const qEdge = player.keys.has('KeyQ') && !qPrev;
   ePrev = player.keys.has('KeyE');
+  qPrev = player.keys.has('KeyQ');
+
+  // While the stylist conversation is up it owns all input (the player is frozen
+  // by main.js): E steps into the studio, Q declines. The sign-off then lingers
+  // for a beat before dismissing itself (any key skips it).
+  if (dlg) {
+    curHint = '';
+    if (dlg.phase === 'ask') {
+      if (eEdge) { closeDialog(); openWardrobe(); }
+      else if (qEdge) sayGoodbye();
+    } else {
+      dlg.t -= dt;
+      if (dlg.t <= 0 || eEdge || qEdge) closeDialog();
+    }
+    return;
+  }
 
   if (near(p, EXT_DOOR)) {
     curHint = `Press ${key('E')} to enter`;
@@ -492,6 +579,10 @@ export function updateStore(player, dt) {
   } else if (near(p, INT_DOOR)) {
     curHint = `Press ${key('E')} to exit`;
     if (eEdge) startTransition(EXT_SPAWN);
+  } else if (STYLIST && nearR(p, STYLIST, STYLIST2)) {
+    // the front-left cashier: talk to her to open the wardrobe conversation
+    if (eEdge) openDialog();
+    else curHint = wardrobeOpen() ? '' : `Press ${key('E')} to talk`;
   } else {
     curHint = '';
   }

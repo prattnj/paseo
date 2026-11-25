@@ -4,6 +4,7 @@
 // solid collisions against the world and other cars.
 import * as THREE from 'three';
 import { makeHumanoid, animateWalk } from './character.js';
+import { loadLook, saveLook, lookToHumanoid } from '../core/appearance.js';
 import { movePlayer } from '../core/collision.js';
 import { collideCarWorld, CAR_R, pitchLift } from './traffic.js';
 import { groundHeight, nearestBeach, WATER_Y, inReservoir, reservoirRespawn } from '../world/island.js';
@@ -26,8 +27,7 @@ export class Player {
     this.camera = camera;
     this.colliders = colliders;
     this.traffic = traffic;
-    this.char = makeHumanoid({ shirt: 0xe04f43, pants: 0x37474f });
-    scene.add(this.char.group);
+    this.scene = scene;
 
     this.pos = new THREE.Vector3(30, 0.2, -115); // plaza spawn
     this.vel = new THREE.Vector3();
@@ -35,6 +35,13 @@ export class Player {
     this.pitch = 0.12;            // slight down-look
     this.heading = -Math.PI / 2;  // character facing
     this.grounded = true;
+
+    // Customizable look (shirt/pants/skin/hair), persisted in localStorage and
+    // swapped live from the Hansen's wardrobe. Builds this.char + adds it to the
+    // scene. Done after pos/heading so the freshly built body spawns in place.
+    this.look = loadLook();
+    this.char = null;
+    this.setAppearance(this.look);
     this.phase = 0;
     this.keys = new Set();
 
@@ -58,6 +65,24 @@ export class Player {
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+  }
+
+  // Rebuild the humanoid from a `look` (indices into the appearance palettes)
+  // and swap it into the scene in place of the current one. The body is a single
+  // baked mesh, so "changing clothes" means constructing a fresh humanoid — cheap
+  // (one merge) and only ever happens on a wardrobe click. Preserves position,
+  // facing and visibility so the swap is seamless. Persists the choice.
+  setAppearance(look) {
+    this.look = look;
+    const old = this.char;
+    const visible = old ? old.group.visible : true;
+    if (old) this.scene.remove(old.group);
+    this.char = makeHumanoid(lookToHumanoid(look));
+    this.char.group.position.copy(this.pos);
+    this.char.group.rotation.y = this.heading;
+    this.char.group.visible = visible;
+    this.scene.add(this.char.group);
+    saveLook(look);
   }
 
   // Frame the third-person spawn view without running any physics — used to

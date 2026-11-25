@@ -158,6 +158,139 @@
         font-size: 0.82em; line-height: 1; text-transform: uppercase;
         vertical-align: baseline;
       }
+      /* ---- wardrobe (Hansen's full-screen "change your look" screen) ---- */
+      #wardrobe {
+        position: fixed; inset: 0; z-index: 12; display: none;
+        background:
+          radial-gradient(120% 90% at 28% 18%, #24384c 0%, #131f2b 55%, #0a121b 100%);
+        color: #fff; font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      #wardrobe.show { display: block; }
+      #wardrobe .wrap {
+        position: absolute; inset: 0; display: flex; align-items: stretch;
+        gap: 24px; padding: 30px 40px; box-sizing: border-box;
+      }
+      /* left: the live 3D portrait on a soft studio spotlight (~1/3 width) */
+      #wardrobe .stage {
+        flex: 0 0 32%; min-width: 0; position: relative;
+        display: flex; flex-direction: column;
+        border-radius: 20px; overflow: hidden;
+        background:
+          radial-gradient(75% 60% at 50% 32%, rgba(120, 170, 210, 0.28) 0%, rgba(20, 30, 42, 0) 70%),
+          linear-gradient(to bottom, #1b2b3b, #0e1822 78%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.4);
+      }
+      #wardrobe .stagehd {
+        position: absolute; top: 16px; left: 20px; z-index: 2;
+        font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+        opacity: 0.55; font-weight: 600;
+      }
+      #wardrobe canvas.model {
+        flex: 1; width: 100%; height: 100%; display: block;
+      }
+      /* Done sits in the bottom-right corner of the studio window (no glow) */
+      #wardrobe .done {
+        position: absolute; right: 16px; bottom: 16px; z-index: 3;
+        cursor: pointer; padding: 10px 30px; border-radius: 10px;
+        font: inherit; font-size: 14px; letter-spacing: 2px;
+        color: #08131c; font-weight: 600;
+        background: linear-gradient(90deg, #6ee7ff, #b6f3ff); border: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        transition: transform 0.12s ease;
+      }
+      #wardrobe .done:hover { transform: translateY(-1px); }
+      /* right: the option rows */
+      #wardrobe .controls {
+        flex: 1 1 auto; min-width: 0;
+        display: flex; flex-direction: column; gap: 18px;
+        padding: 6px 4px 0; overflow-y: auto;
+      }
+      #wardrobe .hd { display: flex; flex-direction: column; gap: 4px; }
+      #wardrobe .title { font-size: 34px; font-weight: 300; letter-spacing: 6px; }
+      #wardrobe .sub { font-size: 13px; opacity: 0.6; letter-spacing: 1px; }
+      #wardrobe .rows { display: flex; flex-direction: column; gap: 20px; }
+      #wardrobe .row { display: flex; flex-direction: column; gap: 10px; }
+      #wardrobe .row .lbl {
+        font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+        opacity: 0.62; font-weight: 600;
+      }
+      /* a row's tiles never wrap: one horizontal strip flanked by scroll arrows */
+      #wardrobe .strip { display: flex; align-items: center; gap: 8px; }
+      #wardrobe .arrow {
+        flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 20px; line-height: 1; color: #fff;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        transition: background 0.12s ease, transform 0.12s ease;
+      }
+      #wardrobe .arrow:hover { background: rgba(255, 255, 255, 0.2); transform: scale(1.08); }
+      #wardrobe .arrow.hide { visibility: hidden; }
+      #wardrobe .tiles {
+        flex: 1 1 auto; min-width: 0;
+        display: flex; flex-wrap: nowrap; gap: 10px;
+        overflow-x: auto; scroll-behavior: smooth;
+        scrollbar-width: none; -ms-overflow-style: none; padding: 6px 0 4px;
+      }
+      #wardrobe .tiles::-webkit-scrollbar { display: none; }
+      #wardrobe .tile {
+        flex: 0 0 76px;
+        cursor: pointer; padding: 8px 6px 6px; font: inherit; color: #fff;
+        display: flex; flex-direction: column; align-items: center; gap: 5px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        transition: transform 0.12s ease, border-color 0.12s ease,
+                    box-shadow 0.12s ease, background 0.12s ease;
+      }
+      #wardrobe .tile .art {
+        width: 100%; aspect-ratio: 1; display: flex; align-items: center;
+        justify-content: center; border-radius: 8px;
+        background:
+          linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03));
+        box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.12);
+      }
+      #wardrobe .tile .art svg { width: 82%; height: 82%; display: block; }
+      #wardrobe .tile .nm {
+        font-size: 11px; opacity: 0.72; letter-spacing: 0.3px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+      }
+      #wardrobe .tile:hover {
+        transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.4);
+        background: rgba(255, 255, 255, 0.09);
+      }
+      #wardrobe .tile.sel {
+        border-color: #6ee7ff; background: rgba(110, 231, 255, 0.14);
+        box-shadow: 0 0 0 1px rgba(110, 231, 255, 0.4), 0 4px 16px rgba(110, 231, 255, 0.28);
+      }
+      #wardrobe .tile.sel .nm { opacity: 1; }
+      /* narrow screens: stack the portrait above the controls */
+      @media (max-width: 860px) {
+        #wardrobe .wrap { flex-direction: column; padding: 18px; gap: 16px; }
+        #wardrobe .stage { flex: 0 0 34vh; }
+      }
+
+      /* ---- stylist conversation (RPG-style dialog box, docked at the top) ---- */
+      #dialog {
+        position: fixed; left: 50%; top: 42px; transform: translateX(-50%);
+        display: none; z-index: 11; width: min(640px, 92vw);
+        font-family: 'Segoe UI', system-ui, sans-serif; user-select: none;
+      }
+      #dialog.show { display: block; }
+      #dialog .box {
+        background: #fff; color: #1c2530;
+        border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 14px;
+        padding: 18px 24px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35);
+      }
+      #dialog .who {
+        font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+        color: #2f8f4e; font-weight: 700; margin-bottom: 8px;
+      }
+      #dialog .say { font-size: 20px; line-height: 1.35; font-weight: 400; }
+      #dialog .opts { display: flex; gap: 22px; margin-top: 16px; }
+      #dialog .opt { font-size: 15px; letter-spacing: 0.3px; color: #3a4550; }
+
       #minimap {
         position: fixed; left: 44px; bottom: 44px; width: 400px; height: 400px;
         border-radius: 12px; overflow: hidden; z-index: 5;

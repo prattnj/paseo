@@ -14,10 +14,11 @@ import { Minimap } from './core/minimap.js';
 import { Speakers } from './fx/speakers.js';
 import { Fountains } from './fx/fountains.js';
 import { FOUNTAINS } from './world/blocks/index.js';
-import { updateStore, storeHint, inStore } from './world/landmarks/store.js';
+import { updateStore, storeHint, inStore, storeDialogOpen } from './world/landmarks/store.js';
 import { updateBubbles } from './fx/bubble.js';
 import { key } from './core/keycap.js';
 import { mergeStatic } from './core/merge.js';
+import { initWardrobe, wardrobeOpen } from './core/wardrobe.js';
 
 const app = document.getElementById('app');
 const overlay = document.getElementById('overlay');
@@ -177,6 +178,9 @@ playBtn.addEventListener('click', (e) => {
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
   if (locked) clearTimeout(relockTimer);
+  // The wardrobe releases the lock on purpose (so the cursor can click swatches);
+  // that's not a pause — keep the title/pause overlay hidden and the music going.
+  if (!locked && wardrobeOpen()) { overlay.classList.add('hidden'); return; }
   if (locked) {
     // drop focus from any menu button, or SPACE (jump) would "click" it mid-game
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
@@ -227,8 +231,10 @@ function tick() {
   // still frame. clock.getDelta() above still drains the elapsed time, so there
   // is no dt spike on resume.
   if (locked) {
-    player.update(dt);
-    updateStore(player, dt); // Hansen's doorway hint + fade-and-teleport
+    // The stylist conversation freezes the player (no movement/mouse-look) so it
+    // reads as a conversation, while the rest of the world keeps living behind it.
+    if (!storeDialogOpen()) player.update(dt);
+    updateStore(player, dt); // Hansen's doorway hint + fade-and-teleport + stylist chat
     updateBubbles(player, dt); // bob + billboard every speech bubble (store workers + greeters)
     traffic.update(dt, player);
     peds.update(dt, traffic, player);
@@ -347,6 +353,7 @@ async function boot() {
 
   setProgress(94, 'Waking the locals…');
   player = new Player(scene, camera, colliders, traffic);
+  initWardrobe(player, acquireLock); // Hansen's stylist menu (releases/re-acquires the pointer lock)
   peds = new Pedestrians(scene, colliders);
   balls = new Balls(scene, colliders);
   for (const s of BALL_SPAWNS) balls.add(s.x, s.z);
