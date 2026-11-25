@@ -48,7 +48,10 @@ jitter) comes from coordinate-seeded hashes in `src/core/util.js`:
 - `src/main.js` — the single entry point (`index.html` loads `/src/main.js`).
 - `src/core/` — engine utilities, no world knowledge: `geo.js` (the `GeoBatch`
   instancing layer), `merge.js` (static-mesh merger), `collision.js`, `curve.js`,
-  `util.js` (the determinism hashes), `palette.js` (colors), `minimap.js`.
+  `util.js` (the determinism hashes), `palette.js` (colors), `minimap.js`,
+  `settings.js` (persisted player preferences + the pause-menu Settings panel;
+  add a setting as a row in its `SETTINGS` schema and handle the key in
+  `main.js` `applySetting`).
 - `src/world/` — the hand-authored static world: `layout.js`, `coast-data.js`,
   `island.js`, `parkway.js`, `paths.js`, `city.js`, `balls.js`.
   - `src/world/blocks/` — per-grid-cell block builders + shared helpers (below).

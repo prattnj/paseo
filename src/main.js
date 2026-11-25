@@ -24,13 +24,20 @@ import { Coins } from './core/coins.js';
 import { Levels } from './core/levels.js';
 import { Unlocks } from './core/unlocks.js';
 import { Achievements } from './core/achievements.js';
+import { Settings, buildSettingsMenu } from './core/settings.js';
 
 const app = document.getElementById('app');
 const overlay = document.getElementById('overlay');
 
+// Player preferences (persisted). Read before the renderer so the first frame
+// already uses the chosen resolution; everything else is applied in
+// applySetting() once the objects it touches exist.
+const settings = new Settings();
+const basePixelRatio = () => Math.min(window.devicePixelRatio, 2);
+
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(basePixelRatio() * settings.get('renderScale'));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
@@ -58,8 +65,9 @@ sun.shadow.mapSize.set(4096, 4096);
 const SHADOW_R = 300;         // half-size of the follow window (m) → 600/4096 ≈ 0.146m/texel
 const SHADOW_AHEAD = 180;     // push the window ahead of the camera so the foreground is covered
 const SUN_DIST = 1300;        // how far up-sun the light sits from the window centre
-const SHADOW_EVERY = 2;       // refresh the shadow map every Nth active frame. 1 = fully smooth
+let shadowEvery = 2;         // refresh the shadow map every Nth active frame. 1 = fully smooth
                               // moving shadows (max cost), higher = cheaper but steppier movers.
+                              // Set by the Shadows setting (see applyShadows).
 sun.shadow.camera.left = -SHADOW_R;
 sun.shadow.camera.right = SHADOW_R;
 sun.shadow.camera.top = SHADOW_R;
@@ -126,7 +134,7 @@ function applyPanorama() {
 
 // ---- background music (DOM element — cheap to grab up front) ----
 const bgm = document.getElementById('bgm');
-const BGM_VOL = 0.35;    // city bgm's full volume
+const BGM_VOL = 0.35;    // city bgm's full volume (before the player's volume settings)
 bgm.volume = BGM_VOL;
 
 // Hansen's store song: swaps in for the city bgm while you're inside the
@@ -148,6 +156,55 @@ let storeWasIn = false;  // edge-detect entering the store, to restart the song
 let lighthouse, pooManHero, smoke, minimap, traffic, player, peds, balls;
 let coins, levels, unlocks, achievements, listener, speakers, fountains;
 let started = false; // flips true the first time the player clicks Play
+
+// ---- settings → live game ----
+// Volume gains (master × channel) multiply the game's own mix in tick().
+let musicGain = 1, worldGain = 1;
+let fpsCap = 0, nextFrameAt = 0; // frame limiter (0 = uncapped)
+let minimapOn = true;
+let shadowsOn = true;
+
+// Shadow tiers: Off drops the sun's shadow entirely (no shadow pass at all);
+// Low halves the map (2048², ~0.29m/texel) and refreshes it every 3rd frame;
+// High is the original 4096² every 2nd frame; Ultra refreshes every frame.
+function applyShadows(q) {
+  shadowsOn = q !== 'off';
+  sun.castShadow = shadowsOn; // three recompiles the lit materials on the change
+  const size = q === 'low' ? 2048 : 4096;
+  if (sun.shadow.mapSize.x !== size) {
+    sun.shadow.mapSize.set(size, size);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } // realloc at new size
+  }
+  shadowEvery = q === 'low' ? 3 : q === 'ultra' ? 1 : 2;
+  if (shadowsOn) { updateSunShadow(); sun.shadow.needsUpdate = true; }
+}
+
+function applySetting(k, v, all) {
+  switch (k) {
+    case 'masterVol': case 'musicVol': case 'worldVol':
+      musicGain = all.masterVol * all.musicVol;
+      worldGain = all.masterVol * all.worldVol;
+      if (speakers) speakers.sound.setVolume(worldGain);
+      if (!locked) bgm.volume = BGM_VOL * musicGain; // paused: the menu preview is what you hear
+      break;
+    case 'renderScale': renderer.setPixelRatio(basePixelRatio() * v); break;
+    case 'shadows': applyShadows(v); break;
+    case 'fpsCap': fpsCap = v; nextFrameAt = 0; break;
+    case 'fov':
+      if (player) player.baseFov = v;
+      // apply now so the change is visible behind the pause menu (not on the
+      // title panorama, which keeps its own framing until Play)
+      if (started) { camera.fov = v; camera.updateProjectionMatrix(); }
+      break;
+    case 'boostFov': if (player) player.boostFov = v; break;
+    case 'mouseSens': if (player) player.mouseSens = v; break;
+    case 'invertY': if (player) player.invertY = v; break;
+    case 'showMinimap': minimapOn = v; document.body.classList.toggle('no-minimap', !v); break;
+    case 'showFps': document.body.classList.toggle('no-fps', !v); break;
+  }
+}
+const applyAllSettings = () => { for (const k in settings.values) applySetting(k, settings.values[k], settings.values); };
+settings.onChange(applySetting);
 
 // ---- pointer lock ----
 let locked = false;
@@ -187,6 +244,7 @@ document.addEventListener('pointerlockchange', () => {
   // that's not a pause — keep the title/pause overlay hidden and the music going.
   if (!locked && wardrobeOpen()) { overlay.classList.add('hidden'); return; }
   if (locked) {
+    settingsMenu.close(); // (resuming always leaves the settings panel)
     // drop focus from any menu button, or SPACE (jump) would "click" it mid-game
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   }
@@ -205,7 +263,16 @@ document.addEventListener('mousemove', (e) => {
   if (locked) player.onMouseMove(e.movementX, e.movementY);
 });
 
+// The game is silent while paused, so the Settings panel plays the city music
+// (at the chosen volume) while it's open — otherwise the sliders would be mute.
+const settingsMenu = buildSettingsMenu(settings, {
+  onOpen: () => { bgm.volume = BGM_VOL * musicGain; bgm.play().catch(() => {}); },
+  onClose: () => { if (!locked) bgm.pause(); },
+});
+
 window.addEventListener('resize', () => {
+  // devicePixelRatio changes when the window moves between monitors
+  renderer.setPixelRatio(basePixelRatio() * settings.get('renderScale'));
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -221,6 +288,15 @@ let lastHintHtml = ''; // last HUD hint HTML written, so we only re-render on ch
 
 function tick() {
   requestAnimationFrame(tick);
+  // Frame limiter: skip whole rAF callbacks until the next slot. nextFrameAt
+  // advances by exactly one interval so the average rate holds on any refresh
+  // rate (e.g. 60 on a 144Hz panel), and re-syncs after a stall. The 1ms slack
+  // absorbs rAF timestamp jitter.
+  if (fpsCap) {
+    const now = performance.now();
+    if (now < nextFrameAt - 1) return;
+    nextFrameAt = Math.max(nextFrameAt + 1000 / fpsCap, now);
+  }
   const raw = clock.getDelta();
   const dt = Math.min(raw, 0.05);
 
@@ -265,9 +341,9 @@ function tick() {
     if (wantStore && storeBgm.paused) storeBgm.play().catch(() => {}); // resume after an ESC pause
     // ONE write per element per frame — never write an intermediate value and
     // then scale it (the audio thread can catch the intermediate → audible blip).
-    const bgmVol = BGM_VOL * memorialDuck * (1 - storeMix);
+    const bgmVol = BGM_VOL * memorialDuck * (1 - storeMix) * musicGain;
     if (bgm.volume !== bgmVol) bgm.volume = bgmVol;
-    const storeVol = STORE_VOL * storeMix;
+    const storeVol = STORE_VOL * storeMix * musicGain;
     if (storeBgm.volume !== storeVol) storeBgm.volume = storeVol;
 
     achievements.update(dt, player); // track stats, grant rewards, pop toasts
@@ -276,7 +352,7 @@ function tick() {
     // re-centre the follow window on the current view, then re-capture (static
     // casters + moving actors). Higher-frequency refreshes make cars/peds/the
     // player's own shadow track more smoothly. Paused → skip entirely.
-    if (shadowTick++ % SHADOW_EVERY === 0) { updateSunShadow(); sun.shadow.needsUpdate = true; }
+    if (shadowsOn && shadowTick++ % shadowEvery === 0) { updateSunShadow(); sun.shadow.needsUpdate = true; }
   }
 
   // near-car HUD hint (HTML: the key letter is drawn as a keycap icon)
@@ -307,7 +383,7 @@ function tick() {
     }
   }
 
-  minimap.update(player);
+  if (minimapOn) minimap.update(player);
   smoke.update(dt); // smoke drifts even while paused, so the plant is never dead
 
   renderer.render(scene, camera);
@@ -391,6 +467,7 @@ async function boot() {
   listener = new THREE.AudioListener();
   camera.add(listener);
   speakers = new Speakers(scene, listener);
+  applyAllSettings(); // every actor the settings touch exists now
 
   window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, coins, levels, unlocks, achievements, applyPanorama }; // debug/testing hook
   await raf();

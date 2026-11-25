@@ -76,6 +76,11 @@ export class Player {
     this._camLen = CAM_DIST;         // smoothed camera boom length
     this._dyOff = 0;                 // drive-cam corner-slide yaw offset
     this._logTimer = 0;  // timer for coordinate logging
+    // player preferences (set from the Settings menu via main.js)
+    this.mouseSens = 1;    // look-speed multiplier
+    this.invertY = false;  // flip vertical mouse look
+    this.baseFov = 72;     // resting field of view (deg)
+    this.boostFov = true;  // widen the FOV while boosting
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') e.preventDefault();
@@ -125,8 +130,8 @@ export class Player {
     // (after a frame hitch / focus change) — swallow those so the camera
     // never leaps to a different angle on its own
     if (Math.abs(dx) > 250 || Math.abs(dy) > 250) return;
-    this.yaw -= dx * 0.0024;
-    this.pitch += dy * 0.0022;
+    this.yaw -= dx * 0.0024 * this.mouseSens;
+    this.pitch += dy * 0.0022 * this.mouseSens * (this.invertY ? -1 : 1);
     this.pitch = Math.max(-0.9, Math.min(1.2, this.pitch));
   }
 
@@ -152,7 +157,7 @@ export class Player {
     else this.updateWalk(dt);
 
     // boost FOV kick: slight zoom-out while boosting, eased both ways
-    const wantFov = 72 + (this._boostFx ? 9 : 0);
+    const wantFov = this.baseFov + (this._boostFx && this.boostFov ? 9 : 0);
     if (Math.abs(this.camera.fov - wantFov) > 0.02) {
       this.camera.fov += (wantFov - this.camera.fov) * Math.min(1, 5 * dt);
       this.camera.updateProjectionMatrix();

@@ -442,6 +442,102 @@
       }
       #lvlToast .rw img { width: 18px; height: 18px; }
 
+      /* ---- settings (pause / title screen) ---- */
+      body.no-minimap #minimap, body.no-fps #fps { display: none; }
+      #settingsBtn {
+        margin-top: -4px; padding: 7px 22px; border-radius: 7px; cursor: pointer;
+        font: inherit; font-size: 13px; letter-spacing: 2px; color: #fff;
+        background: transparent; border: 1px solid rgba(255, 255, 255, 0.28);
+        opacity: 0.85; transition: background 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+      }
+      #settingsBtn:hover, #settingsBtn:focus-visible {
+        opacity: 1; background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.6); outline: none;
+      }
+      #settings { display: none; }
+      #overlay.settings-open > :not(#settings) { display: none; }
+      #overlay.settings-open #settings {
+        display: flex; flex-direction: column; box-sizing: border-box;
+        width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+        border-radius: 12px; overflow: hidden;
+        background: rgba(14, 24, 34, 0.72); border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      }
+      #settings h2 {
+        margin: 0; padding: 16px 20px 12px; font-size: 14px; font-weight: 600;
+        letter-spacing: 5px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      #settings .body { overflow-y: auto; padding: 4px 20px 14px; }
+      #settings h3 {
+        margin: 16px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 3px;
+        text-transform: uppercase; color: #6ee7ff; opacity: 0.9;
+      }
+      #settings .row {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+        padding: 9px 0; border-top: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      #settings h3 + .row { border-top: none; }
+      #settings .lbl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      #settings .name { font-size: 14px; }
+      #settings .hint { font-size: 11px; opacity: 0.55; line-height: 1.3; }
+      #settings .ctl { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+      #settings .val { width: 44px; text-align: right; font-size: 13px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+      #settings input[type=range] {
+        -webkit-appearance: none; appearance: none; width: 170px; height: 6px; margin: 0;
+        border-radius: 999px; cursor: pointer; outline: none;
+        background: linear-gradient(90deg, #6ee7ff var(--p, 50%), rgba(255, 255, 255, 0.18) var(--p, 50%));
+      }
+      #settings input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+        background: #fff; border: none; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+      }
+      #settings input[type=range]::-moz-range-thumb {
+        width: 16px; height: 16px; border-radius: 50%;
+        background: #fff; border: none; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+      }
+      #settings input[type=range]:focus-visible::-webkit-slider-thumb { outline: 2px solid #6ee7ff; outline-offset: 2px; }
+      #settings .seg {
+        display: flex; border-radius: 7px; overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+      #settings .seg button, #settings .foot button, #settings .tog {
+        font: inherit; color: #fff; cursor: pointer;
+      }
+      #settings .seg button {
+        padding: 5px 11px; font-size: 12px; border: none; background: transparent;
+        border-left: 1px solid rgba(255, 255, 255, 0.14); transition: background 0.12s ease;
+      }
+      #settings .seg button:first-child { border-left: none; }
+      #settings .seg button:hover { background: rgba(255, 255, 255, 0.1); }
+      #settings .seg button.on { background: rgba(110, 231, 255, 0.28); color: #fff; font-weight: 600; }
+      #settings .tog {
+        position: relative; width: 42px; height: 24px; border-radius: 999px; padding: 0;
+        background: rgba(255, 255, 255, 0.18); border: none; transition: background 0.15s ease;
+      }
+      #settings .tog::after {
+        content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+        border-radius: 50%; background: #fff; transition: transform 0.15s ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+      }
+      #settings .tog.on { background: #3fb8d4; }
+      #settings .tog.on::after { transform: translateX(18px); }
+      #settings button:focus-visible { outline: 2px solid #6ee7ff; outline-offset: 2px; }
+      #settings .foot {
+        display: flex; justify-content: space-between; gap: 12px;
+        padding: 12px 20px; border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      #settings .foot button {
+        padding: 8px 20px; border-radius: 7px; font-size: 13px; letter-spacing: 1px;
+        background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      #settings .foot button:hover { background: rgba(255, 255, 255, 0.14); }
+      #settings .foot .reset { opacity: 0.7; border-color: transparent; background: transparent; }
+      #settings .foot .back { border-color: rgba(110, 231, 255, 0.7); }
+      @media (max-width: 560px) {
+        #settings .row { flex-direction: column; align-items: stretch; gap: 8px; }
+        #settings input[type=range] { flex: 1; width: auto; }
+      }
+
       /* ---- pause-menu stats panel (between Resume and the achievements) ---- */
       #lvlStats {
         width: min(560px, 92vw); margin-top: 6px; box-sizing: border-box;
