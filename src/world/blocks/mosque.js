@@ -3,8 +3,8 @@
 import { PALETTE as P, SIDEWALK_H } from '../../core/palette.js';
 import { hash } from '../../core/util.js';
 import { column, archHeader, windowsWall } from './pieces.js';
-import { flowerBed } from './props.js';
-import { slabAndSidewalk, groundStripe, cornerLamps } from './kit.js';
+import { flowerBed, fountain } from './props.js';
+import { slabAndSidewalk, groundStripe, cornerLamps, concreteScoring, wallScoring } from './kit.js';
 
 const M_MARBLE = 0xece5d5, M_MARBLE_D = 0xcabfa6, M_TURQ = 0x1f9bb0, M_GOLD = 0xd9b45a, M_TILE = 0x2f6fb0;
 
@@ -74,6 +74,9 @@ function arcadeSide(g, col, cxr, czr, half, axis, faceSign, baseY) {
   const [wx, wz] = P(0, -depth / 2 + 0.4);
   g.boxB(wx, baseY, wz, alongX ? half * 2 : 0.8, H, alongX ? 0.8 : half * 2, M_MARBLE_D);
   col.add(wx, 0, wz, alongX ? half * 2 : 0.8, baseY + H, alongX ? 0.8 : half * 2);
+  // coursing on the outer face of the back wall — the mosque's outer envelope
+  const [owx, owz] = P(0, -depth / 2);
+  wallScoring(g, owx, baseY, owz, axis, half * 2, H, -faceSign, { hex: 0xb0a17c, rows: 4, margin: 1.5, lineW: 0.12 });
   const springY = baseY + H * 0.52;
   for (let i = 0; i <= n; i++) { const [px, pz] = P(-half + i * step, depth / 2); column(g, px, pz, baseY, H - 0.8, 0.6); col.add(px, 0, pz, 1.4, baseY + H - 0.8, 1.4); }
   for (let i = 0; i < n; i++) { const [ax, az] = P(-half + (i + 0.5) * step, depth / 2); archHeader(g, ax, az, axis, step - 1.5, 0.9, springY, baseY + H, M_MARBLE); }
@@ -89,6 +92,8 @@ function pishtaq(g, col, x, zWall, baseY, faceSign, wallH) {
   const front = zWall + faceSign * D;
   const inner = openW / 2 - 0.4; // pier inner face — arch overlaps it (buries the seam)
   for (const sx of [-1, 1]) { g.boxB(x + sx * (inner + pierW / 2), baseY, zWall + faceSign * D / 2, pierW, H, D, M_MARBLE); col.add(x + sx * (inner + pierW / 2), 0, zWall + faceSign * D / 2, pierW, baseY + H, D); }
+  // coursing on the courtyard-facing pier fronts
+  for (const sx of [-1, 1]) wallScoring(g, x + sx * (inner + pierW / 2), baseY, zWall + faceSign * D, 'x', pierW, H * 0.78, faceSign, { hex: 0xb0a17c, rows: 6, margin: 0.4, lineW: 0.12 });
   g.boxB(x, baseY, zWall + faceSign * 0.4, openW, H - 3.5, 0.7, 0x241d18);            // dark recess
   archHeader(g, x, front, 'x', openW, 0.6, baseY + 9, baseY + H - 2, M_TILE);          // tiled arched tympanum
   g.box(x, baseY + 4.6, zWall + faceSign * (D + 0.06), openW - 1.2, 8.8, 0.3, 0x241d18); // doorway
@@ -104,17 +109,16 @@ function pishtaq(g, col, x, zWall, baseY, faceSign, wallH) {
   }
 }
 
-// Domed ablution-fountain kiosk (şadırvan) in the courtyard centre.
+// Domed ablution-fountain kiosk (şadırvan) in the courtyard centre: a colonnaded
+// gilded canopy sheltering the same wet fountain used everywhere else in the city
+// (jet + overflow curtain + crown droplets), raised onto the marble plinth so its
+// animated water lines up with the basin.
 function sadirvan(g, col, x, z, baseY) {
-  const R = 3.6;
+  const R = 4.7; // column ring set wide enough to clear the standard fountain basin (rim 3.9)
   for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; column(g, x + Math.cos(a) * R, z + Math.sin(a) * R, baseY, 5, 0.4); }
   g.cyl(x, baseY + 5, z, R + 0.9, R + 0.9, 0.6, M_GOLD, 12);
   miniDome(g, x, z, baseY + 5.6, R - 0.2, 2);
-  g.cyl(x, baseY, z, 2.6, 2.9, 0.6, M_MARBLE, 12);        // basin
-  g.cyl(x, baseY + 0.45, z, 2.3, 2.3, 0.3, P.water, 12);
-  g.cyl(x, baseY + 0.6, z, 0.4, 0.5, 1.5, M_MARBLE, 8);   // central spout pillar
-  g.ico(x, baseY + 2.2, z, 0.35, P.water);
-  col.add(x, 0, z, 5.8, baseY + 2, 5.8);
+  fountain(g, col, x, z, false, baseY); // the city-standard wet fountain, raised onto the plinth
 }
 
 // Monumental walk-through entrance gateway on the north side of the courtyard:
@@ -131,6 +135,8 @@ function gateway(g, col, x, z, baseY) {
     const px = x + sx * (inner + pierW / 2);
     g.boxB(px, baseY, z, pierW, H, Dp, M_MARBLE);
     col.add(px, 0, z, pierW, baseY + H, Dp);
+    // coursing on both faces of each gateway pier (it's walked through)
+    for (const fz of [1, -1]) wallScoring(g, px, baseY, z + fz * Dp / 2, 'x', pierW, H * 0.72, fz, { hex: 0xb0a17c, rows: 4, margin: 0.4, lineW: 0.12 });
   }
   archHeader(g, x, z, 'x', openW, arcD, baseY + 9, baseY + H - 2, M_TILE);
   g.boxB(x, baseY + H - 1.7, z, span + 0.4, 1.7, Dp + 0.4, M_GOLD);
@@ -154,13 +160,26 @@ function buildMosque(g, col, b) {
   // raised marble plinth the whole complex sits on
   g.boxB(cx, SIDEWALK_H, cz, PHX * 2, PLINTH, PHZ * 2, M_MARBLE);
   col.add(cx, 0, cz, PHX * 2, gy, PHZ * 2);
-  g.boxB(cx, SIDEWALK_H + PLINTH - 0.04, cz, PHX * 2 + 0.5, 0.1, PHZ * 2 + 0.5, M_GOLD); // gilded plinth edge
+  g.boxB(cx, SIDEWALK_H + PLINTH - 0.04, cz, PHX * 2 + 0.5, 0.1, PHZ * 2 + 0.5, M_GOLD); // gilded plinth top
+  // scored paving joints on the courtyard floor. The gilded slab above is the
+  // visible floor (its top is at gy+0.06), so the joints sit a hair above THAT,
+  // in a darker bronze so they read against the gold; structures on the plinth
+  // simply cover their patch.
+  concreteScoring(g, { x0: cx - PHX + 2, x1: cx + PHX - 2, z0: cz - PHZ + 2, z1: cz + PHZ - 2 },
+    7, 0xb0862c, 0.16, gy + 0.08);
 
   // ---- prayer hall (rear +z) ----
   const hallHD = 16, hallHW = PHX - 3;
   const hcz = cz + PHZ - hallHD - 1, H = 14;
   g.boxB(cx, gy, hcz, hallHW * 2, H, hallHD * 2, M_MARBLE);
   col.add(cx, 0, hcz, hallHW * 2, gy + H, hallHD * 2);
+  // marble coursing up the four hall walls, spanning the full height (including
+  // the blank band above the windows, below the gold cornice)
+  const hcH = H * 0.92, hcOpt = { hex: 0xb0a17c, rows: 7, margin: 2, lineW: 0.14 };
+  wallScoring(g, cx, gy, hcz + hallHD, 'x', hallHW * 2, hcH, +1, hcOpt);
+  wallScoring(g, cx, gy, hcz - hallHD, 'x', hallHW * 2, hcH, -1, hcOpt);
+  wallScoring(g, cx + hallHW, gy, hcz, 'z', hallHD * 2, hcH, +1, hcOpt);
+  wallScoring(g, cx - hallHW, gy, hcz, 'z', hallHD * 2, hcH, -1, hcOpt);
   g.boxB(cx, gy + H * 0.6, hcz, hallHW * 2 + 0.3, 1.3, hallHD * 2 + 0.3, M_TILE);   // tile band
   g.boxB(cx, gy + H, hcz, hallHW * 2 + 0.7, 0.9, hallHD * 2 + 0.7, M_GOLD);         // gold cornice
   for (const sgn of [-1, 1]) {
