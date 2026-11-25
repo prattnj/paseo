@@ -98,43 +98,34 @@ function updateSunShadow() {
 }
 sun.shadow.camera.updateProjectionMatrix();
 
-// ---- world ----
 const colliders = new Colliders();
-buildIsland(scene, colliders);
-buildCity(scene, colliders);
-buildForest(scene, colliders);
 
-// Collapse the static world's ~1600 loose landmark/terrain meshes into a few
-// merged meshes per material — must run here, after every static builder and
-// before any actor or animated object is added to the scene.
-mergeStatic(scene);
+// ---- opening panorama ----
+// The very first screen (before the player has ever clicked Play) is NOT the
+// gameplay camera: it's a fixed, elevated oblique view over the city. Tune the
+// two vectors to reframe it (live: __game.applyPanorama() after editing, or set
+// __game.camera.position/lookAt in the console while the opening screen is up).
+const PANORAMA = {
+  pos: new THREE.Vector3(-140, 120, 300),
+  look: new THREE.Vector3(150, -35, -150),
+};
+function applyPanorama() {
+  camera.position.copy(PANORAMA.pos);
+  camera.lookAt(PANORAMA.look);
+}
 
-const lighthouse = new Lighthouse(scene, colliders);
-const pooManHero = new PooManHero(scene); // the town hero flying his sky patrol
-const smoke = new Smoke(scene);
-
-// The minimap is a one-time top-down render of the finished static world, so
-// take it here — before the actors are added — to keep cars/peds off the map.
-const minimap = new Minimap(document.getElementById('minimap'), renderer, scene);
-sun.shadow.needsUpdate = true; // the map render consumed the pending shadow pass; redo it for the title frame
-
-const traffic = new Traffic(scene, colliders);
-const player = new Player(scene, camera, colliders, traffic);
-const peds = new Pedestrians(scene, colliders);
-const balls = new Balls(scene, colliders);
-for (const s of BALL_SPAWNS) balls.add(s.x, s.z);
-player.settleCamera(); // frame the spawn view for the title screen (before pointer lock)
-updateSunShadow();     // centre the shadow window on the title view before its render
-window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera }; // debug/testing hook
-
-// ---- background music ----
+// ---- background music (DOM element — cheap to grab up front) ----
 const bgm = document.getElementById('bgm');
 bgm.volume = 0.35;
 
-// ---- Poo Man memorial speakers (positional music that ducks the bgm) ----
-const listener = new THREE.AudioListener();
-camera.add(listener);
-const speakers = new Speakers(scene, listener);
+// World / actor objects are created asynchronously in boot() below (so the
+// loading screen can animate between build phases); declared here so the event
+// handlers and the render loop can close over them. They're all populated
+// before tick() starts, and every handler only fires after the player has
+// clicked Play — i.e. long after boot() has finished.
+let lighthouse, pooManHero, smoke, minimap, traffic, player, peds, balls;
+let listener, speakers;
+let started = false; // flips true the first time the player clicks Play
 
 // ---- pointer lock ----
 let locked = false;
@@ -152,7 +143,17 @@ function acquireLock() {
     });
   }
 }
-overlay.addEventListener('click', () => {
+// Only the Play button enters the world (not a click anywhere on the overlay),
+// so the pause screen's panels are freely clickable without launching.
+const playBtn = document.getElementById('playBtn');
+playBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!started) {
+    started = true;
+    overlay.classList.remove('opening');       // leave the panorama for the gameplay cam
+    document.body.classList.remove('opening');  // reveal the gameplay HUD
+    player.settleCamera();                      // reset camera smoothing to the spawn view
+  }
   acquireLock();
   if (bgm.paused) bgm.play().catch(() => {});
   speakers.play();
@@ -160,10 +161,15 @@ overlay.addEventListener('click', () => {
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
   if (locked) clearTimeout(relockTimer);
+  if (locked) {
+    // drop focus from any menu button, or SPACE (jump) would "click" it mid-game
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+  }
   overlay.classList.toggle('hidden', locked);
   // ESC unlocks the pointer → treat it as a full pause: silence all music (the
-  // world/actors are frozen in the loop below). Clicking to re-lock resumes.
+  // world/actors are frozen in the loop below). Clicking Play re-locks to resume.
   if (!locked) {
+    playBtn.textContent = 'Resume';
     bgm.pause();
     speakers.pause();
   }
@@ -252,4 +258,85 @@ function tick() {
 
   renderer.render(scene, camera);
 }
-tick();
+
+// ---- boot: build the world in phases so the loading screen can animate ----
+// Every phase is a chunk of the (heavy, synchronous) world build; yielding a
+// frame between them lets the browser paint the spinner + progress bar and keeps
+// the tab responsive. The order is load-bearing: all static builders run, then
+// mergeStatic collapses them, then the minimap is captured, and only then are
+// the moving actors added (see the module header for why).
+const raf = () => new Promise(requestAnimationFrame);
+const loadingEl = document.getElementById('loading');
+const barFill = loadingEl.querySelector('.fill');
+const phaseEl = loadingEl.querySelector('.phase');
+function setProgress(pct, label) {
+  barFill.style.width = pct + '%';
+  if (label) phaseEl.textContent = label;
+}
+
+async function boot() {
+  await raf(); // let the loading screen paint before the first heavy chunk
+
+  setProgress(8, 'Shaping the island…');
+  buildIsland(scene, colliders);
+  await raf();
+
+  setProgress(34, 'Raising the city…');
+  buildCity(scene, colliders);
+  await raf();
+
+  setProgress(52, 'Planting the forest…');
+  buildForest(scene, colliders);
+  await raf();
+
+  setProgress(64, 'Setting the scene…');
+  mergeStatic(scene); // collapse the static meshes (before any actor is added)
+  lighthouse = new Lighthouse(scene, colliders);
+  pooManHero = new PooManHero(scene); // the town hero flying his sky patrol
+  smoke = new Smoke(scene);
+  await raf();
+
+  setProgress(74, 'Drawing the map…');
+  // The minimap is a one-time top-down render of the finished static world —
+  // taken before the actors are added so cars/peds stay off the map.
+  minimap = new Minimap(document.getElementById('minimap'), renderer, scene);
+  sun.shadow.needsUpdate = true; // the map render consumed the pending shadow pass
+  await raf();
+
+  setProgress(84, 'Filling the streets…');
+  traffic = new Traffic(scene, colliders);
+  await raf();
+
+  setProgress(94, 'Waking the locals…');
+  player = new Player(scene, camera, colliders, traffic);
+  peds = new Pedestrians(scene, colliders);
+  balls = new Balls(scene, colliders);
+  for (const s of BALL_SPAWNS) balls.add(s.x, s.z);
+  player.settleCamera(); // place the character at spawn (camera gets overridden below)
+  applyPanorama();        // frame the title screen with the static city vista
+  updateSunShadow();      // centre the shadow window on the panorama view before its render
+
+  // Poo Man memorial speakers (positional music that ducks the bgm).
+  listener = new THREE.AudioListener();
+  camera.add(listener);
+  speakers = new Speakers(scene, listener);
+
+  window.__game = { player, traffic, peds, pooManHero, groundHeight, nearestBeach, renderer, scene, camera, applyPanorama }; // debug/testing hook
+  await raf();
+
+  setProgress(100, 'Ready');
+  sun.shadow.needsUpdate = true;  // render the (re-centred) shadow map into the panorama frame
+  renderer.render(scene, camera); // paint the panorama once behind the (still hidden) overlay
+  finishLoading();
+  tick();
+}
+
+// Reveal the title screen: drop the loading gate (which un-hides the overlay +
+// its Play button and the minimap frame) and fade the loader out.
+function finishLoading() {
+  document.body.classList.remove('loading');
+  loadingEl.classList.add('done');
+  setTimeout(() => { loadingEl.style.display = 'none'; }, 500);
+}
+
+boot();
