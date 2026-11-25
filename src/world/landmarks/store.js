@@ -24,6 +24,7 @@ import { hash, pick } from '../../core/util.js';
 import { makeHumanoid, mat } from '../../actors/character.js';
 import { slabAndSidewalk, parkingLotAt, makeTextTexture, cornerLamps } from '../blocks/kit.js';
 import { tree, planter, scatterTrees } from '../blocks/props.js';
+import { key } from '../../core/keycap.js';
 
 // ---- palette -------------------------------------------------------------
 const HANSEN_GREEN = 0x3f9d57;   // friendly storefront green (sign band, canopy)
@@ -426,7 +427,8 @@ function worker(scene, x, z, ry, shirt, seed) {
 function fadeEl() { return document.getElementById('fade'); }
 function near(p, door) { const dx = p.x - door.x, dz = p.z - door.z; return dx * dx + dz * dz < HINT2; }
 
-// Current doorway hint ('' when none) — read by the main-loop HUD code.
+// Current doorway hint as an HTML string with keycap markup ('' when
+// none) — read by the main-loop HUD code, which assigns it via innerHTML.
 export function storeHint() { return curHint; }
 
 export function updateStore(player, dt) {
@@ -457,10 +459,10 @@ export function updateStore(player, dt) {
   ePrev = player.keys.has('KeyE');
 
   if (near(p, EXT_DOOR)) {
-    curHint = 'Press E to enter';
+    curHint = `Press ${key('E')} to enter`;
     if (eEdge) startTransition(INT_SPAWN);
   } else if (near(p, INT_DOOR)) {
-    curHint = 'Press E to exit';
+    curHint = `Press ${key('E')} to exit`;
     if (eEdge) startTransition(EXT_SPAWN);
   } else {
     curHint = '';

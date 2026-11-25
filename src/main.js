@@ -15,6 +15,7 @@ import { Speakers } from './fx/speakers.js';
 import { Fountains } from './fx/fountains.js';
 import { FOUNTAINS } from './world/blocks/index.js';
 import { updateStore, storeHint } from './world/landmarks/store.js';
+import { key } from './core/keycap.js';
 import { mergeStatic } from './core/merge.js';
 
 const app = document.getElementById('app');
@@ -192,6 +193,7 @@ const fpsEl = document.getElementById('fps');
 let fpsAccum = 0; // smoothed frame time (s), EMA
 let fpsSince = 0; // time since last readout refresh
 let shadowTick = 0; // drives the throttled shadow-map refresh
+let lastHintHtml = ''; // last HUD hint HTML written, so we only re-render on change
 
 function tick() {
   requestAnimationFrame(tick);
@@ -228,12 +230,12 @@ function tick() {
     if (shadowTick++ % SHADOW_EVERY === 0) { updateSunShadow(); sun.shadow.needsUpdate = true; }
   }
 
-  // near-car HUD hint
+  // near-car HUD hint (HTML: the key letter is drawn as a keycap icon)
   const hint = document.getElementById('hint');
   if (hint) {
-    const text = player.car ? 'E — get out' : player.nearCar ? 'E — drive' : storeHint();
-    if (hint.textContent !== text) hint.textContent = text;
-    hint.style.display = text ? 'block' : 'none';
+    const html = player.car ? `${key('E')} get out` : (player.nearCar ? `${key('E')} drive` : storeHint());
+    if (lastHintHtml !== html) { hint.innerHTML = html; lastHintHtml = html; }
+    hint.style.display = html ? 'block' : 'none';
   }
 
   // boost meter + speedometer (visible while driving)
